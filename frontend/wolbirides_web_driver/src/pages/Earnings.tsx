@@ -9,33 +9,35 @@ export default function Earnings() {
   }, []);
 
   return (
-    <div className="screen">
-      <h1 className="screen-title">Earnings</h1>
-      <p className="screen-subtitle">Computed from your completed trips.</p>
+    <div>
+      <div className="page-heading">
+        <h1>Earnings</h1>
+        <p>Computed live from your completed trips.</p>
+      </div>
 
       {!earnings && <div className="empty-state">Loading…</div>}
 
       {earnings && (
         <>
-          <div className="card" style={{ marginBottom: 12, textAlign: "center", padding: "24px 16px" }}>
-            <div style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 6 }}>Today</div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: "var(--navy-ink)" }}>
-              GH₵{earnings.earnings_today}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 20 }}>
+            <div className="card" style={{ padding: "28px 24px" }}>
+              <div style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 8 }}>Today</div>
+              <div style={{ fontSize: 34, fontWeight: 700, color: "var(--navy-ink)" }}>GH₵{earnings.earnings_today}</div>
+              <div style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 6 }}>
+                {earnings.trips_completed_today} trip{earnings.trips_completed_today === 1 ? "" : "s"}
+              </div>
             </div>
-            <div style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 4 }}>
-              {earnings.trips_completed_today} trip{earnings.trips_completed_today === 1 ? "" : "s"}
+
+            <div className="card" style={{ padding: "28px 24px" }}>
+              <div style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 8 }}>All time</div>
+              <div style={{ fontSize: 34, fontWeight: 700 }}>GH₵{earnings.earnings_total}</div>
+              <div style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 6 }}>
+                {earnings.trips_completed_total} trip{earnings.trips_completed_total === 1 ? "" : "s"} completed
+              </div>
             </div>
           </div>
 
-          <div className="card" style={{ textAlign: "center", padding: "20px 16px" }}>
-            <div style={{ fontSize: 13, color: "var(--ink-muted)", marginBottom: 6 }}>All time</div>
-            <div style={{ fontSize: 24, fontWeight: 700 }}>GH₵{earnings.earnings_total}</div>
-            <div style={{ fontSize: 13, color: "var(--ink-muted)", marginTop: 4 }}>
-              {earnings.trips_completed_total} trip{earnings.trips_completed_total === 1 ? "" : "s"} completed
-            </div>
-          </div>
-
-          <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 16 }}>
+          <p style={{ fontSize: 12.5, color: "var(--ink-muted)", maxWidth: 560 }}>
             This is a live sum of your completed trip fares, not a payout ledger — WR-07.4's
             commission/subscription model isn't deducted here yet, so treat this as gross
             fare collected, not take-home pay.

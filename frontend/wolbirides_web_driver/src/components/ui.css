@@ -67,3 +67,26 @@
 }
 
 .field-input:focus { border-color: var(--gold); }
+
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.kv-row:last-child { border-bottom: none; }
+
+.page-heading { margin-bottom: 24px; }
+.page-heading h1 { font-size: 26px; font-weight: 700; margin: 0 0 6px 0; }
+.page-heading p { font-size: 14px; color: var(--ink-muted); margin: 0; max-width: 520px; line-height: 1.5; }
+
+.auth-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  margin-bottom: 16px;
+}

@@ -52,7 +52,7 @@ export default function PinPicker({
     <div className="pin-picker">
       <div className="pin-picker-label">{label}</div>
       <div className="pin-picker-map">
-        <MapContainer center={[center.lat, center.lng]} zoom={zoom} style={{ height: "220px", width: "100%" }}>
+        <MapContainer center={[center.lat, center.lng]} zoom={zoom} style={{ height: "280px", width: "100%" }}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

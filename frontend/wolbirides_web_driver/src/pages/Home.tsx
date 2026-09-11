@@ -19,7 +19,6 @@ export default function Home() {
     });
   }, []);
 
-  // Check for a trip already in progress (e.g. after a page refresh mid-trip)
   useEffect(() => {
     api.get("/drivers/me/active-trip").then(({ data }) => {
       if (data) navigate(`/active-trip/${data.id}`);
@@ -54,8 +53,6 @@ export default function Home() {
       clearOffer();
       navigate(`/active-trip/${tripId}`);
     } catch {
-      // Someone else likely got there first, or the offer expired — the
-      // cascade has already moved to the next driver server-side.
       clearOffer();
     }
   }
@@ -69,52 +66,64 @@ export default function Home() {
   }
 
   if (driver.verification_status !== "verified") {
-    return (
-      <div className="screen">
-        <div className="empty-state">
-          Your account isn't verified yet — you can't go online until ops approves your
-          application.
-        </div>
-      </div>
-    );
+    return <div className="empty-state">Your account isn't verified yet — you can't go online until ops approves your application.</div>;
   }
 
   return (
-    <div className="screen">
-      <h1 className="screen-title">{driver.is_online ? "You're online" : "You're offline"}</h1>
-      <p className="screen-subtitle">{zone ? zone.name : "Loading zone…"}</p>
+    <div>
+      <div className="page-heading">
+        <h1>{driver.is_online ? "You're online" : "You're offline"}</h1>
+        <p>{zone ? zone.name : "Loading zone…"}</p>
+      </div>
 
-      <div className={"card status-card " + (driver.is_online ? "status-card-online" : "")}>
-        <div>
-          <div className="status-label">{driver.is_online ? "Receiving ride requests" : "Not receiving requests"}</div>
-          {driver.is_online && (
-            <div className="status-detail">
-              {connected ? "Connected" : "Reconnecting…"}
-              {locationError && <span className="status-warning"> · {locationError}</span>}
+      <div className="drive-layout">
+        <div className="drive-main-col">
+          <div className={"card status-card " + (driver.is_online ? "status-card-online" : "")}>
+            <div>
+              <div className="status-label">{driver.is_online ? "Receiving ride requests" : "Not receiving requests"}</div>
+              {driver.is_online && (
+                <div className="status-detail">
+                  {connected ? "Connected" : "Reconnecting…"}
+                  {locationError && <span className="status-warning"> · {locationError}</span>}
+                </div>
+              )}
+            </div>
+            <button
+              className={"toggle-switch " + (driver.is_online ? "toggle-switch-on" : "")}
+              onClick={toggleOnline}
+              disabled={toggling || !zone}
+              aria-label="Toggle online status"
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+
+          {error && <div className="auth-error">{error}</div>}
+
+          {!driver.is_online && (
+            <div className="card drive-hint-card">
+              <h2>Ready to start earning?</h2>
+              <p>
+                Go online to start receiving ride requests in {zone?.name ?? "your zone"}. Keep this
+                tab open and location sharing turned on while you're online.
+              </p>
             </div>
           )}
         </div>
-        <button
-          className={"toggle-switch " + (driver.is_online ? "toggle-switch-on" : "")}
-          onClick={toggleOnline}
-          disabled={toggling || !zone}
-          aria-label="Toggle online status"
-        >
-          <span className="toggle-knob" />
-        </button>
-      </div>
 
-      {error && <div className="home-error">{error}</div>}
-
-      <div className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-          <span style={{ fontSize: 13, color: "var(--ink-muted)" }}>Vehicle</span>
-          <span style={{ fontWeight: 600 }}>{driver.vehicles[0]?.plate_number || "—"}</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 13, color: "var(--ink-muted)" }}>Rating</span>
-          <span style={{ fontWeight: 600 }}>★ {driver.quality_score}</span>
-        </div>
+        <aside className="drive-side-col">
+          <div className="card">
+            <h2 className="side-card-title">Vehicle</h2>
+            <div className="kv-row">
+              <span>Plate</span>
+              <strong>{driver.vehicles[0]?.plate_number || "—"}</strong>
+            </div>
+            <div className="kv-row">
+              <span>Rating</span>
+              <strong>★ {driver.quality_score}</strong>
+            </div>
+          </div>
+        </aside>
       </div>
 
       {offer && (

@@ -12,7 +12,9 @@
 .btn-block { width: 100%; }
 .btn-primary { background: var(--navy-ink); color: white; }
 .btn-gold { background: var(--gold); color: var(--navy-ink); }
-.btn-danger { background: var(--danger-bg); color: var(--danger); }
+.btn-success { background: var(--success); color: white; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger-ghost { background: var(--danger-bg); color: var(--danger); }
 .btn-ghost { background: transparent; color: var(--ink-muted); border: 1px solid var(--line); }
 
 .badge {
@@ -29,20 +31,7 @@
 .badge-neutral { background: #EDEBE3; color: var(--ink-muted); }
 
 .screen {
-  padding: 20px 20px 24px 20px;
-  flex: 1;
-}
-
-.screen-title {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0 0 4px 0;
-}
-
-.screen-subtitle {
-  font-size: 13.5px;
-  color: var(--ink-muted);
-  margin: 0 0 20px 0;
+  padding: 0;
 }
 
 .card {
@@ -58,3 +47,23 @@
   color: var(--ink-muted);
   font-size: 14px;
 }
+
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.field-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 15px;
+  margin-bottom: 14px;
+  background: var(--paper-raised);
+}
+
+.field-input:focus { border-color: var(--gold); }

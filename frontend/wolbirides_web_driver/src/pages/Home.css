@@ -1,3 +1,10 @@
+.drive-layout {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
 .status-card {
   display: flex;
   justify-content: space-between;
@@ -10,17 +17,8 @@
   background: var(--success-bg);
 }
 
-.status-label {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.status-detail {
-  font-size: 12.5px;
-  color: var(--ink-muted);
-  margin-top: 2px;
-}
-
+.status-label { font-size: 16px; font-weight: 600; }
+.status-detail { font-size: 12.5px; color: var(--ink-muted); margin-top: 4px; }
 .status-warning { color: var(--warning); }
 
 .toggle-switch {
@@ -51,11 +49,14 @@
 
 .toggle-switch-on .toggle-knob { transform: translateX(22px); }
 
-.home-error {
-  background: var(--danger-bg);
-  color: var(--danger);
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 13.5px;
-  margin-bottom: 12px;
+.drive-hint-card h2 { font-size: 15px; font-weight: 700; margin: 0 0 8px 0; }
+.drive-hint-card p { font-size: 13.5px; color: var(--ink-muted); line-height: 1.5; margin: 0; }
+
+.drive-side-col { position: sticky; top: 88px; }
+
+.side-card-title { font-size: 14px; font-weight: 700; margin: 0 0 14px 0; }
+
+@media (max-width: 860px) {
+  .drive-layout { grid-template-columns: 1fr; }
+  .drive-side-col { position: static; }
 }

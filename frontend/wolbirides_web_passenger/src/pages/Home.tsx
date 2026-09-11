@@ -59,11 +59,7 @@ export default function Home() {
   }
 
   if (!zone) {
-    return (
-      <div className="screen">
-        <div className="empty-state">No active service zone yet — check back once the pilot zone is live.</div>
-      </div>
-    );
+    return <div className="empty-state">No active service zone yet — check back once the pilot zone is live.</div>;
   }
 
   const mapCenter: LatLng = {
@@ -72,32 +68,53 @@ export default function Home() {
   };
 
   return (
-    <div className="screen">
-      <h1 className="screen-title">Where to?</h1>
-      <p className="screen-subtitle">{zone.name}</p>
+    <div>
+      <div className="page-heading">
+        <h1>Where to?</h1>
+        <p>{zone.name}</p>
+      </div>
 
-      <PinPicker center={mapCenter} value={pickup} onChange={setPickup} label="Pickup" />
-      <PinPicker center={mapCenter} value={destination} onChange={setDestination} label="Destination" />
-
-      {fareEstimate != null && (
-        <div className="card fare-card">
-          <div>
-            <div className="fare-label">Estimated fare</div>
-            <div className="fare-value">GH₵{fareEstimate.toFixed(2)}</div>
-          </div>
-          <div className="fare-distance">{distanceKm!.toFixed(1)} km</div>
+      <div className="ride-layout">
+        <div className="ride-map-col">
+          <PinPicker center={mapCenter} value={pickup} onChange={setPickup} label="Pickup" />
+          <PinPicker center={mapCenter} value={destination} onChange={setDestination} label="Destination" />
         </div>
-      )}
 
-      {error && <div className="home-error">{error}</div>}
+        <aside className="ride-panel-col">
+          <div className="card ride-summary-card">
+            <h2>Trip summary</h2>
 
-      <button
-        className="btn btn-gold btn-block request-btn"
-        disabled={!pickup || !destination || requesting}
-        onClick={requestRide}
-      >
-        {requesting ? "Requesting…" : "Request WolbiRide"}
-      </button>
+            <div className="ride-point-row">
+              <span className="trip-dot trip-dot-pickup" />
+              <span>{pickup ? `${pickup.lat.toFixed(4)}, ${pickup.lng.toFixed(4)}` : "Set pickup on the map"}</span>
+            </div>
+            <div className="ride-point-row">
+              <span className="trip-dot trip-dot-dest" />
+              <span>{destination ? `${destination.lat.toFixed(4)}, ${destination.lng.toFixed(4)}` : "Set destination on the map"}</span>
+            </div>
+
+            {fareEstimate != null && (
+              <div className="fare-block">
+                <div>
+                  <div className="fare-label">Estimated fare</div>
+                  <div className="fare-value">GH₵{fareEstimate.toFixed(2)}</div>
+                </div>
+                <div className="fare-distance">{distanceKm!.toFixed(1)} km</div>
+              </div>
+            )}
+
+            {error && <div className="auth-error">{error}</div>}
+
+            <button
+              className="btn btn-gold btn-block"
+              disabled={!pickup || !destination || requesting}
+              onClick={requestRide}
+            >
+              {requesting ? "Requesting…" : "Request WolbiRide"}
+            </button>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

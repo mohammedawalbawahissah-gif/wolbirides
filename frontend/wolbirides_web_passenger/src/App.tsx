@@ -1,12 +1,12 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import AppLayout from "./components/AppLayout";
 import RequireAuth from "./components/RequireAuth";
-import Shell from "./components/Shell";
-import "./components/Shell.css";
 import History from "./pages/History";
 import Home from "./pages/Home";
-import Login from "./pages/Login";
 import Profile from "./pages/Profile";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
 import TripStatus from "./pages/TripStatus";
 
 export default function App() {
@@ -14,12 +14,15 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/signin" element={<SignIn />} />
+          <Route path="/signup" element={<SignUp />} />
+          <Route path="/login" element={<Navigate to="/signin" replace />} />
+
           <Route
             path="/"
             element={
               <RequireAuth>
-                <Shell />
+                <AppLayout />
               </RequireAuth>
             }
           >
@@ -27,15 +30,12 @@ export default function App() {
             <Route path="history" element={<History />} />
             <Route path="profile" element={<Profile />} />
           </Route>
+
           <Route
             path="/trip/:tripId"
             element={
               <RequireAuth>
-                <div className="app-shell">
-                  <div className="app-frame" style={{ paddingBottom: 24 }}>
-                    <TripStatus />
-                  </div>
-                </div>
+                <TripStatus />
               </RequireAuth>
             }
           />

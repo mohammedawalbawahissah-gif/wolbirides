@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Trip } from "../api/client";
 import { useTripSocket } from "../hooks/useTripSocket";
 import "./TripStatus.css";
@@ -35,9 +35,6 @@ export default function TripStatus() {
   }
 
   useEffect(load, [tripId]);
-
-  // Websocket push (trips/services.py::_broadcast_trip_update) tells us to
-  // re-fetch rather than trying to merge a partial payload client-side.
   useEffect(() => {
     if (lastMessage) load();
   }, [lastMessage]);
@@ -65,80 +62,85 @@ export default function TripStatus() {
     }
   }
 
-  if (error) return <div className="screen"><div className="empty-state">{error}</div></div>;
-  if (!trip) return <div className="screen"><div className="empty-state">Loading…</div></div>;
-
-  const copy = STATUS_COPY[trip.status];
-  const canCancel = ["requested", "matching", "matched", "driver_arriving"].includes(trip.status);
-
   return (
-    <div className="screen trip-screen">
-      <div className="trip-status-card">
-        <div className="trip-status-label">{copy.label}</div>
-        <div className="trip-status-detail">{copy.detail}</div>
-      </div>
-
-      <div className="card trip-detail-card">
-        <div className="trip-route">
-          <div className="trip-route-row">
-            <span className="trip-dot trip-dot-pickup" /> {trip.pickup_label || "Pickup"}
-          </div>
-          <div className="trip-route-row">
-            <span className="trip-dot trip-dot-dest" /> {trip.destination_label || "Destination"}
-          </div>
+    <div className="app-layout">
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Link to="/" className="topbar-brand">
+            <span className="brand-mark">WR</span>
+            <span className="brand-name">WolbiRides</span>
+          </Link>
         </div>
-        <div className="trip-fare">
-          {trip.fare_final
-            ? `GH₵${trip.fare_final}`
-            : trip.fare_quote
-            ? `GH₵${trip.fare_quote.total} est.`
-            : "—"}
-        </div>
-      </div>
+      </header>
 
-      {canCancel && (
-        <button className="btn btn-danger btn-block" disabled={cancelling} onClick={cancelTrip}>
-          {cancelling ? "Cancelling…" : "Cancel ride"}
-        </button>
-      )}
+      <main className="app-main trip-status-main">
+        {error && <div className="empty-state">{error}</div>}
+        {!trip && !error && <div className="empty-state">Loading…</div>}
 
-      {trip.status === "no_drivers_found" && (
-        <button className="btn btn-primary btn-block" onClick={() => navigate("/")}>
-          Try again
-        </button>
-      )}
+        {trip && (
+          <div className="trip-status-layout">
+            <div className="trip-status-primary">
+              <div className="trip-status-banner">
+                <div className="trip-status-label">{STATUS_COPY[trip.status].label}</div>
+                <div className="trip-status-detail">{STATUS_COPY[trip.status].detail}</div>
+              </div>
 
-      {trip.status === "completed" && !ratingSubmitted && (
-        <div className="card rating-card">
-          <div className="rating-title">How was your ride?</div>
-          <div className="rating-stars">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                className={"star" + (rating != null && n <= rating ? " star-filled" : "")}
-                onClick={() => setRating(n)}
-                aria-label={`${n} star${n > 1 ? "s" : ""}`}
-              >
-                ★
-              </button>
-            ))}
+              {trip.status === "no_drivers_found" && (
+                <button className="btn btn-primary" onClick={() => navigate("/")}>
+                  Try again
+                </button>
+              )}
+
+              {trip.status === "completed" && !ratingSubmitted && (
+                <div className="card rating-card">
+                  <div className="rating-title">How was your ride?</div>
+                  <div className="rating-stars">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        className={"star" + (rating != null && n <= rating ? " star-filled" : "")}
+                        onClick={() => setRating(n)}
+                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn btn-gold" disabled={rating == null} onClick={submitRating}>
+                    Submit rating
+                  </button>
+                </div>
+              )}
+
+              {((trip.status === "completed" && ratingSubmitted) || trip.status === "cancelled") && (
+                <button className="btn btn-primary" onClick={() => navigate("/")}>
+                  Book another ride
+                </button>
+              )}
+            </div>
+
+            <aside className="trip-status-side">
+              <div className="card">
+                <h2 className="side-card-title">Trip details</h2>
+                <div className="trip-route-row"><span className="trip-dot trip-dot-pickup" /> {trip.pickup_label || "Pickup"}</div>
+                <div className="trip-route-row"><span className="trip-dot trip-dot-dest" /> {trip.destination_label || "Destination"}</div>
+                <div className="trip-fare-row">
+                  <span>Fare</span>
+                  <strong>
+                    {trip.fare_final ? `GH₵${trip.fare_final}` : trip.fare_quote ? `GH₵${trip.fare_quote.total} est.` : "—"}
+                  </strong>
+                </div>
+
+                {["requested", "matching", "matched", "driver_arriving"].includes(trip.status) && (
+                  <button className="btn btn-danger-ghost btn-block" disabled={cancelling} onClick={cancelTrip} style={{ marginTop: 16 }}>
+                    {cancelling ? "Cancelling…" : "Cancel ride"}
+                  </button>
+                )}
+              </div>
+            </aside>
           </div>
-          <button className="btn btn-gold btn-block" disabled={rating == null} onClick={submitRating}>
-            Submit rating
-          </button>
-        </div>
-      )}
-
-      {(trip.status === "completed" || trip.status === "cancelled") && ratingSubmitted && (
-        <button className="btn btn-primary btn-block" onClick={() => navigate("/")}>
-          Book another ride
-        </button>
-      )}
-      {trip.status === "cancelled" && (
-        <button className="btn btn-primary btn-block" onClick={() => navigate("/")}>
-          Book another ride
-        </button>
-      )}
+        )}
+      </main>
     </div>
   );
 }
