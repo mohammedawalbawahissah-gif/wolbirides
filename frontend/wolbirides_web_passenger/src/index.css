@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap');
+@import 'leaflet/dist/leaflet.css';
+
+:root {
+  --navy-ink: #16233F;
+  --gold: #B8860B;
+  --gold-soft: #E8C766;
+  --paper: #F6F5F1;
+  --paper-raised: #FFFFFF;
+  --ink: #1B1F27;
+  --ink-muted: #5B6472;
+  --line: #E1DFD7;
+  --success: #2F7D5D;
+  --success-bg: #E7F2EC;
+  --danger: #B23A2F;
+  --danger-bg: #FBEBE9;
+  --warning: #A66A1E;
+  --warning-bg: #FBF0DF;
+  --font-ui: 'Source Sans 3', -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select { font-family: inherit; font-size: inherit; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
