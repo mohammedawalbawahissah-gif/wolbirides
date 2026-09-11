@@ -54,6 +54,19 @@ See `.env.example`. Key ones:
 - `CORS_ALLOWED_ORIGINS` — comma-separated list, for the separate React admin dashboard.
 - `DATABASE_URL` — point at Postgres in staging/production; SQLite is used automatically if unset (dev only).
 
+## ⚠️ redis-py version is pinned deliberately
+
+`redis==5.3.1` in requirements.txt is a hard pin, not a loose minimum.
+`channels_redis==4.3.0` breaks with `redis-py>=8.0` — the newer client's
+async timeout handling raises `redis.exceptions.TimeoutError` up through
+Channels' consumer dispatch loop instead of retrying, which silently
+kills every websocket connection the moment a channel-layer read times
+out (discovered via an end-to-end dispatch test this session — driver
+websockets connected fine but never received ride offers, no error
+surfaced except a crash in the server log). Do not let `pip` or a
+dependency-update tool bump `redis` past `<6.0` until `channels_redis`
+publishes a release that's tested against it.
+
 ## API surface
 
 Full endpoint list is in the PRD (Section 7). Quick reference:
@@ -67,12 +80,21 @@ PATCH /api/passengers/me
 POST /api/drivers/apply
 GET  /api/drivers/me
 PATCH /api/drivers/me/status       -> {is_online, zone_id}
+GET  /api/drivers/me/trips
+GET  /api/drivers/me/earnings
+GET  /api/drivers/me/active-trip
+
+GET  /api/zones                    (active zones, for passenger/driver clients)
 
 POST /api/trips                    -> creates trip + starts dispatch cascade
 GET  /api/trips/:id
+POST /api/trips/:id/accept         (driver accepts an offer)
+POST /api/trips/:id/decline        (driver declines; cascades to next candidate)
+POST /api/trips/:id/start          (driver marks pickup complete)
 POST /api/trips/:id/cancel
 POST /api/trips/:id/complete
 POST /api/trips/:id/rating
+GET  /api/passengers/me/rides
 
 POST /api/payments/momo/initiate
 POST /api/payments/momo/webhook
@@ -117,7 +139,8 @@ Per PRD Section 9 (Out of Scope for MVP) and Section 12 (Open Questions):
 
 - OTP request → verify → JWT issuance, with console fallback when Africa's Talking isn't configured
 - Authenticated `/me` endpoint
-- Full trip request → fare quote → Redis dispatch cascade (correctly returns `no_drivers_found` with no drivers online)
+- **Full end-to-end dispatch**: driver connects websocket + sends a location ping → passenger requests a trip → dispatch cascade offers to the driver over `/ws/driver/location/` → driver accepts via `POST /trips/:id/accept` → trip status flips to `matched`. Verified with a real asyncio websocket client, not just REST calls in isolation.
 - Support ticket creation
 - Incident creation, including the P0/P1 auto-suspend path
-- `makemigrations` / `migrate` / `check` all clean on Django 5.2.17 across all 8 apps
+- Admin endpoints: driver verification queue, trip search, incident/support lists, dashboard summary — all role-gated via `IsAdminRole`, not Django's `is_staff`
+- `makemigrations` / `migrate` / `check` all clean on Django 5.2.17 across all 9 apps

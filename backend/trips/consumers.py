@@ -33,9 +33,14 @@ class DriverLocationConsumer(AsyncJsonWebsocketConsumer):
             return
         self.driver_id = str(self.user.id)
         self.zone_id = None
+        # Join this driver's personal group so trips/services.py::_offer_to_driver
+        # (which sends to group "driver.<id>") can actually reach this connection —
+        # without this, ride offers are sent into a group with no members.
+        await self.channel_layer.group_add(driver_group_name(self.driver_id), self.channel_name)
         await self.accept()
 
     async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(driver_group_name(self.driver_id), self.channel_name)
         if self.zone_id:
             await self.channel_layer.group_discard(zone_group_name(self.zone_id), self.channel_name)
         await remove_driver_location(self.driver_id)

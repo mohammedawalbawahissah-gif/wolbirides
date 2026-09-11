@@ -94,6 +94,73 @@ class PassengerTripHistoryView(APIView):
         return Response(TripSerializer(trips, many=True).data)
 
 
+class TripAcceptView(APIView):
+    """POST /api/trips/:id/accept — driver accepts an offered trip."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, trip_id):
+        trip = get_object_or_404(Trip, id=trip_id)
+        if not hasattr(request.user, "driver_profile"):
+            raise PermissionDenied("Only drivers can accept trips")
+        try:
+            trip = services.accept_trip(trip, request.user.driver_profile)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(TripSerializer(trip).data)
+
+
+class TripDeclineView(APIView):
+    """POST /api/trips/:id/decline — driver declines an offer; cascades to the next candidate."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, trip_id):
+        trip = get_object_or_404(Trip, id=trip_id)
+        if not hasattr(request.user, "driver_profile"):
+            raise PermissionDenied("Only drivers can decline trips")
+        services.decline_or_timeout(trip, str(request.user.driver_profile.id))
+        return Response({"detail": "declined"})
+
+
+class TripStartView(APIView):
+    """POST /api/trips/:id/start — driver marks trip as started (pickup complete)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, trip_id):
+        trip = get_object_or_404(Trip, id=trip_id)
+        if not trip.driver or trip.driver.user_id != request.user.id:
+            raise PermissionDenied("Only the assigned driver can start this trip")
+        trip = services.start_trip(trip)
+        return Response(TripSerializer(trip).data)
+
+
+class DriverActiveTripView(APIView):
+    """
+    GET /api/drivers/me/active-trip — lets the driver app recover state on
+    load/reconnect (e.g. after a refresh mid-trip) without tracking trip_id
+    client-side across sessions.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not hasattr(request.user, "driver_profile"):
+            raise PermissionDenied("Only drivers can query this")
+        trip = (
+            Trip.objects.filter(
+                driver=request.user.driver_profile,
+                status__in=[Trip.Status.MATCHED, Trip.Status.DRIVER_ARRIVING, Trip.Status.IN_PROGRESS],
+            )
+            .order_by("-requested_at")
+            .first()
+        )
+        if not trip:
+            return Response(None)
+        return Response(TripSerializer(trip).data)
+
+
 class TripRatingView(APIView):
     """POST /api/trips/:id/rating"""
 
