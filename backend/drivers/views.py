@@ -21,7 +21,7 @@ class DriverApplyView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer = DriverApplicationSerializer(data=request.data)
+        serializer = DriverApplicationSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         driver = submit_driver_application(request.user, serializer.validated_data)
         return Response(DriverSerializer(driver).data, status=status.HTTP_201_CREATED)

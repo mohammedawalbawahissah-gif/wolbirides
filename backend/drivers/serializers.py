@@ -22,6 +22,21 @@ class DriverApplicationSerializer(serializers.Serializer):
     vehicle_photo = serializers.URLField(required=False, allow_blank=True)
     vehicle_registration_document = serializers.URLField(required=False, allow_blank=True)
 
+    def validate_plate_number(self, value):
+        """
+        Vehicle.plate_number is unique at the DB level (a plate can't belong
+        to two drivers) — without this check, resubmitting a demo/test plate
+        already tied to a different driver hits an IntegrityError and
+        surfaces as a raw 500 instead of a message the applicant can act on.
+        """
+        request = self.context.get("request")
+        existing = Vehicle.objects.filter(plate_number=value)
+        if request:
+            existing = existing.exclude(driver__user=request.user)
+        if existing.exists():
+            raise serializers.ValidationError("This vehicle plate is already registered to another driver.")
+        return value
+
 
 class DriverSerializer(serializers.ModelSerializer):
     vehicles = VehicleSerializer(many=True, read_only=True)

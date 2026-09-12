@@ -34,9 +34,9 @@ export default function FileDrop({
       });
       onChange(data.url);
       setState("done");
-    } catch {
+    } catch (err: any) {
       setState("error");
-      setErrorMsg("Upload failed — check the file and try again.");
+      setErrorMsg(err?.response?.data?.detail || "Upload failed — check the file and try again.");
     }
   }
 

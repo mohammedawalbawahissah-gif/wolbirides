@@ -10,13 +10,17 @@ export default function Home() {
   const { driver, setDriver } = useDriverContext();
   const navigate = useNavigate();
   const [zone, setZone] = useState<ServiceZone | null>(null);
+  const [zonesLoaded, setZonesLoaded] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<ServiceZone[]>("/zones").then(({ data }) => {
-      if (data.length > 0) setZone(data[0]);
-    });
+    api
+      .get<ServiceZone[]>("/zones")
+      .then(({ data }) => {
+        if (data.length > 0) setZone(data[0]);
+      })
+      .finally(() => setZonesLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -73,8 +77,15 @@ export default function Home() {
     <div>
       <div className="page-heading">
         <h1>{driver.is_online ? "You're online" : "You're offline"}</h1>
-        <p>{zone ? zone.name : "Loading zone…"}</p>
+        <p>{zone ? zone.name : zonesLoaded ? "No active service zone yet" : "Loading zone…"}</p>
       </div>
+
+      {zonesLoaded && !zone && (
+        <div className="card" style={{ marginBottom: 16, background: "var(--warning-bg)" }}>
+          There's no active service zone configured yet, so you can't go online. This is set up
+          from the admin dashboard — check back once the pilot zone is live.
+        </div>
+      )}
 
       <div className="drive-layout">
         <div className="drive-main-col">

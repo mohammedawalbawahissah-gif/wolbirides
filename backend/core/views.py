@@ -28,6 +28,12 @@ class DocumentUploadView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request):
+        if not settings.CLOUDINARY_URL:
+            return Response(
+                {"detail": "File uploads aren't configured yet — set CLOUDINARY_URL on the backend."},
+                status=503,
+            )
+
         kind = request.data.get("kind", "")
         if kind not in ALLOWED_KINDS:
             return Response({"detail": f"kind must be one of {sorted(ALLOWED_KINDS)}"}, status=400)
