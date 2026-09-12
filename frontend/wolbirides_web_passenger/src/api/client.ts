@@ -13,14 +13,45 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Silent-refresh: a 401 first tries /auth/token/refresh with the stored
+// refresh token before giving up, so a short-lived access token doesn't
+// force a re-login — the whole point of "stay signed in until you sign
+// out" (WR UX overhaul, item 1). Only one refresh runs at a time; requests
+// that arrive mid-refresh queue behind it instead of each firing their own.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refresh = localStorage.getItem("wolbirides_refresh");
+  if (!refresh) return null;
+  try {
+    const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refresh });
+    localStorage.setItem("wolbirides_access", data.access);
+    return data.access as string;
+  } catch {
+    return null;
+  }
+}
+
+function clearSessionAndRedirect() {
+  localStorage.removeItem("wolbirides_access");
+  localStorage.removeItem("wolbirides_refresh");
+  localStorage.removeItem("wolbirides_user");
+  window.location.href = "/signin";
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("wolbirides_access");
-      localStorage.removeItem("wolbirides_refresh");
-      localStorage.removeItem("wolbirides_user");
-      window.location.href = "/login";
+  async (error) => {
+    const original = error.config;
+    if (error.response?.status === 401 && !original._retried) {
+      original._retried = true;
+      if (!refreshPromise) refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+      const newAccess = await refreshPromise;
+      if (newAccess) {
+        original.headers.Authorization = `Bearer ${newAccess}`;
+        return api(original);
+      }
+      clearSessionAndRedirect();
     }
     return Promise.reject(error);
   }
@@ -29,9 +60,30 @@ api.interceptors.response.use(
 export interface WolbiUser {
   id: string;
   phone: string;
+  email: string | null;
   name: string;
   role: "passenger" | "driver" | "admin" | "support";
   otp_verified: boolean;
+  profile_photo: string;
+}
+
+export interface SavedAddress {
+  id: string;
+  label: string;
+  lat: string;
+  lng: string;
+  address_text: string;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: string;
+  category: "trip" | "driver" | "incident" | "support" | "system";
+  title: string;
+  body: string;
+  link: string;
+  read: boolean;
+  created_at: string;
 }
 
 export interface FareQuote {
@@ -42,10 +94,29 @@ export interface FareQuote {
   expires_at: string;
 }
 
+export interface TripVehicleBrief {
+  plate_number: string;
+  vehicle_type: string;
+  photo: string;
+}
+
+export interface TripDriverBrief {
+  id: string;
+  name: string;
+  phone: string;
+  profile_photo: string;
+  rating: string;
+  verification_status: string;
+  vehicle: TripVehicleBrief | null;
+  current_lat: string | null;
+  current_lng: string | null;
+}
+
 export interface Trip {
   id: string;
   passenger: string;
   driver: string | null;
+  driver_detail: TripDriverBrief | null;
   zone: string;
   status:
     | "requested"

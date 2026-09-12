@@ -3,9 +3,11 @@ import { api, type WolbiUser } from "../api/client";
 
 interface AuthContextValue {
   user: WolbiUser | null;
-  requestOtp: (phone: string) => Promise<void>;
-  verifyOtp: (phone: string, code: string) => Promise<void>;
+  requestSignupCode: (email: string) => Promise<void>;
+  signup: (email: string, code: string, password: string, name: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   updateName: (name: string) => Promise<void>;
+  updateProfilePhoto: (url: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -16,18 +18,28 @@ function loadStoredUser(): WolbiUser | null {
   return raw ? JSON.parse(raw) : null;
 }
 
+function storeSession(data: { access: string; refresh: string; user: WolbiUser }) {
+  localStorage.setItem("wolbirides_access", data.access);
+  localStorage.setItem("wolbirides_refresh", data.refresh);
+  localStorage.setItem("wolbirides_user", JSON.stringify(data.user));
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<WolbiUser | null>(loadStoredUser());
 
-  async function requestOtp(phone: string) {
-    await api.post("/auth/otp/request", { phone });
+  async function requestSignupCode(email: string) {
+    await api.post("/auth/email/otp/request", { email });
   }
 
-  async function verifyOtp(phone: string, code: string) {
-    const { data } = await api.post("/auth/otp/verify", { phone, code });
-    localStorage.setItem("wolbirides_access", data.access);
-    localStorage.setItem("wolbirides_refresh", data.refresh);
-    localStorage.setItem("wolbirides_user", JSON.stringify(data.user));
+  async function signup(email: string, code: string, password: string, name: string) {
+    const { data } = await api.post("/auth/signup", { email, code, password, name, role: "passenger" });
+    storeSession(data);
+    setUser(data.user);
+  }
+
+  async function login(email: string, password: string) {
+    const { data } = await api.post("/auth/login", { email, password });
+    storeSession(data);
     setUser(data.user);
   }
 
@@ -37,15 +49,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data);
   }
 
+  async function updateProfilePhoto(url: string) {
+    const { data } = await api.patch("/passengers/me", { profile_photo: url });
+    localStorage.setItem("wolbirides_user", JSON.stringify(data));
+    setUser(data);
+  }
+
   function logout() {
     localStorage.removeItem("wolbirides_access");
     localStorage.removeItem("wolbirides_refresh");
     localStorage.removeItem("wolbirides_user");
     setUser(null);
+    window.location.href = "/signin";
   }
 
   return (
-    <AuthContext.Provider value={{ user, requestOtp, verifyOtp, updateName, logout }}>
+    <AuthContext.Provider
+      value={{ user, requestSignupCode, signup, login, updateName, updateProfilePhoto, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

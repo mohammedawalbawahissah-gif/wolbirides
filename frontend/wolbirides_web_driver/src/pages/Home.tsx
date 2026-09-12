@@ -107,7 +107,21 @@ export default function Home() {
                 Go online to start receiving ride requests in {zone?.name ?? "your zone"}. Keep this
                 tab open and location sharing turned on while you're online.
               </p>
+              <button className="btn btn-gold btn-block" onClick={toggleOnline} disabled={toggling || !zone}>
+                {toggling ? "Going online…" : "Go online"}
+              </button>
             </div>
+          )}
+
+          {driver.is_online && (
+            <button
+              className="btn btn-danger-ghost btn-block"
+              onClick={toggleOnline}
+              disabled={toggling}
+              style={{ marginTop: 12 }}
+            >
+              {toggling ? "Going offline…" : "Go offline"}
+            </button>
           )}
         </div>
 

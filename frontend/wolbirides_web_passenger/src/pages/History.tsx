@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Trip } from "../api/client";
+import { SkeletonBlock } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
 import "./History.css";
 
 const STATUS_TONE: Record<string, string> = {
@@ -16,9 +18,13 @@ function formatTime(iso: string) {
 export default function History() {
   const [trips, setTrips] = useState<Trip[] | null>(null);
   const navigate = useNavigate();
+  const toast = useToast();
 
   useEffect(() => {
-    api.get<Trip[]>("/passengers/me/rides").then(({ data }) => setTrips(data));
+    api
+      .get<Trip[]>("/passengers/me/rides")
+      .then(({ data }) => setTrips(data))
+      .catch(() => toast.show("Couldn't load your ride history.", "error"));
   }, []);
 
   return (
@@ -28,8 +34,27 @@ export default function History() {
         <p>Past trips and receipts.</p>
       </div>
 
-      {trips == null && <div className="empty-state">Loading…</div>}
-      {trips && trips.length === 0 && <div className="empty-state">No rides yet — your first trip will show up here.</div>}
+      {trips == null && (
+        <div className="history-grid">
+          {[0, 1, 2].map((i) => (
+            <div className="card history-card" key={i} style={{ cursor: "default" }}>
+              <SkeletonBlock height={14} width="40%" />
+              <div style={{ height: 10 }} />
+              <SkeletonBlock height={16} width="80%" />
+              <div style={{ height: 10 }} />
+              <SkeletonBlock height={14} width="30%" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {trips && trips.length === 0 && (
+        <div className="empty-state history-empty">
+          <div className="history-empty-icon">🚕</div>
+          <p>No rides yet — your first trip will show up here.</p>
+          <button className="btn btn-gold" onClick={() => navigate("/")}>Book a ride</button>
+        </div>
+      )}
 
       <div className="history-grid">
         {trips?.map((trip) => (

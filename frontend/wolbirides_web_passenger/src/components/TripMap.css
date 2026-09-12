@@ -1,0 +1,45 @@
+.trip-map {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+.trip-map-pin span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  animation: pin-drop 0.4s var(--ease-standard);
+}
+
+@keyframes pin-drop {
+  0% { transform: translateY(-14px) scale(0.6); opacity: 0; }
+  60% { transform: translateY(2px) scale(1.05); opacity: 1; }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.trip-map-pin-pickup span {
+  background: var(--success);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  border: 2px solid white;
+  box-shadow: 0 0 0 2px var(--success);
+}
+
+.trip-map-pin-dest span {
+  background: var(--danger);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  border: 2px solid white;
+  box-shadow: 0 0 0 2px var(--danger);
+}
+
+.trip-map-pin-driver span {
+  font-size: 20px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  transition: transform 0.6s var(--ease-standard);
+}

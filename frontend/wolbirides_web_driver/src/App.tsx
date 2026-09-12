@@ -3,6 +3,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import AppLayout from "./components/AppLayout";
 import DriverGate from "./components/DriverGate";
 import RequireAuth from "./components/RequireAuth";
+import { ToastProvider } from "./components/Toast";
 import ActiveTrip from "./pages/ActiveTrip";
 import Earnings from "./pages/Earnings";
 import Home from "./pages/Home";
@@ -13,6 +14,7 @@ import Trips from "./pages/Trips";
 
 export default function App() {
   return (
+    <ToastProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -47,5 +49,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ToastProvider>
   );
 }

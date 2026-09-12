@@ -64,3 +64,9 @@ htmlcov/
 # Temporary files
 *.tmp
 *.temp
+
+# Archieves
+*.zip
+*.7z
+*.tar
+*.giz

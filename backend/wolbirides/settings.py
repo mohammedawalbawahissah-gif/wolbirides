@@ -115,9 +115,38 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
+# Long-lived refresh token = "stay signed in until you sign out" (WR UX
+# overhaul, item 1). Access tokens stay short-lived; the frontend silently
+# calls /api/auth/token/refresh on a 401 rather than forcing a re-login.
+from datetime import timedelta  # noqa: E402
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=60),
+    'ROTATE_REFRESH_TOKENS': False,
+}
+
+# Dev fallback: with no real SMTP configured, emails print to the runserver
+# console (same "log instead of send" pattern as AFRICASTALKING_USERNAME
+# below for SMS) so signup works end-to-end without a mail provider.
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@wolbirides.local')
+
+# AI Assistant (WR UX overhaul, item 3) — server-side call to the Anthropic
+# API so the key never reaches the browser. With no key set, the assistant
+# endpoint returns a clear "not configured" error instead of failing oddly.
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
 # WolbiRides is API-only for passenger/driver clients; admin dashboard is a
 # separate React app, hence permissive CORS scoped by env var in production.
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    'CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:5174,http://localhost:5175'
+).split(',')
 
 # --- Third-party integrations (reused from other Wolbi platforms) ---
 AFRICASTALKING_USERNAME = os.environ.get('AFRICASTALKING_USERNAME', '')
@@ -125,6 +154,13 @@ AFRICASTALKING_API_KEY = os.environ.get('AFRICASTALKING_API_KEY', '')
 MOMO_API_KEY = os.environ.get('MOMO_API_KEY', '')
 MOMO_API_SECRET = os.environ.get('MOMO_API_SECRET', '')
 CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
+if CLOUDINARY_URL:
+    # The cloudinary SDK can auto-parse CLOUDINARY_URL from the process
+    # environment on its own, but configuring it explicitly here means it
+    # works the same way regardless of import order or whether something
+    # else already imported cloudinary before Django settings ran.
+    import cloudinary as _cloudinary
+    _cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
 
 
 # Database

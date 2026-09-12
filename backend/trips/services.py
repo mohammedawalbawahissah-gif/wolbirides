@@ -144,6 +144,16 @@ def accept_trip(trip, driver):
     trip.save(update_fields=["driver", "status", "matched_at", "updated_at"])
     _log_event(trip, "matched", {"driver_id": str(driver.id)})
     _broadcast_trip_update(trip)
+
+    from core.models import notify
+
+    notify(
+        trip.passenger,
+        "Driver assigned",
+        f"{driver.user.name or 'Your driver'} is on the way.",
+        category="trip",
+        link=f"/trip/{trip.id}",
+    )
     return trip
 
 
@@ -169,6 +179,12 @@ def complete_trip(trip, fare_final=None):
     trip.save(update_fields=["status", "completed_at", "fare_final", "updated_at"])
     _log_event(trip, "completed", {"fare_final": str(trip.fare_final)})
     _broadcast_trip_update(trip)
+
+    from core.models import notify
+
+    notify(trip.passenger, "Trip complete", f"GH₵{trip.fare_final} — thanks for riding with us.", category="trip", link=f"/trip/{trip.id}")
+    if trip.driver:
+        notify(trip.driver.user, "Trip complete", f"GH₵{trip.fare_final} added to your earnings.", category="trip", link="/earnings")
     return trip
 
 
@@ -179,6 +195,13 @@ def cancel_trip(trip, cancelled_by, reason=""):
     trip.save(update_fields=["status", "cancelled_by", "cancel_reason", "updated_at"])
     _log_event(trip, "cancelled", {"by": cancelled_by, "reason": reason})
     _broadcast_trip_update(trip)
+
+    from core.models import notify
+
+    if cancelled_by != "passenger":
+        notify(trip.passenger, "Trip cancelled", reason or "Your trip was cancelled.", category="trip", link="/")
+    if trip.driver and cancelled_by != "driver":
+        notify(trip.driver.user, "Trip cancelled", reason or "The trip was cancelled.", category="trip", link="/")
     return trip
 
 

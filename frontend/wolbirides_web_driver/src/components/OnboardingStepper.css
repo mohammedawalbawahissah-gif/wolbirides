@@ -1,0 +1,48 @@
+.onboarding-stepper {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: var(--space-5);
+  padding: 0 var(--space-2);
+}
+
+.onb-step {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.onb-step-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--line);
+  color: var(--ink-muted);
+  z-index: 1;
+  transition: background 0.2s var(--ease-standard), color 0.2s var(--ease-standard);
+}
+
+.onb-step-done .onb-step-dot { background: var(--success); color: white; }
+.onb-step-active .onb-step-dot { background: var(--gold); color: var(--navy-ink); box-shadow: 0 0 0 4px var(--gold-soft); }
+
+.onb-step-label { font-size: 11px; margin-top: 6px; color: var(--ink-muted); max-width: 90px; }
+.onb-step-active .onb-step-label, .onb-step-done .onb-step-label { color: var(--ink); font-weight: 600; }
+
+.onb-step-line {
+  position: absolute;
+  top: 13px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--line);
+  z-index: 0;
+}
+
+.onb-step-done .onb-step-line { background: var(--success); }

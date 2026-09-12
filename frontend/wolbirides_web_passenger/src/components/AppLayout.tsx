@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import AssistantPanel from "./AssistantPanel";
+import NotificationBell from "./NotificationBell";
 import "./AppLayout.css";
 
 const NAV_ITEMS = [
@@ -41,9 +43,16 @@ export default function AppLayout() {
           </nav>
 
           <div className="topbar-account">
+            <NotificationBell />
             <button className="account-button" onClick={() => setMenuOpen((o) => !o)}>
-              <span className="account-avatar">{(user?.name || user?.phone || "?")[0].toUpperCase()}</span>
-              <span className="account-name-label">{user?.name || user?.phone}</span>
+              <span className="account-avatar">
+                {user?.profile_photo ? (
+                  <img src={user.profile_photo} alt="" />
+                ) : (
+                  (user?.name || user?.email || user?.phone || "?")[0].toUpperCase()
+                )}
+              </span>
+              <span className="account-name-label">{user?.name || user?.email || user?.phone}</span>
             </button>
             {menuOpen && (
               <div className="account-menu" onMouseLeave={() => setMenuOpen(false)}>
@@ -62,6 +71,8 @@ export default function AppLayout() {
       <main className="app-main">
         <Outlet />
       </main>
+
+      <AssistantPanel greeting="Hi! Ask me about booking a ride, fares, or how WolbiRides works." />
     </div>
   );
 }

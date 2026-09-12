@@ -10,13 +10,42 @@
 .trip-status-banner {
   background: var(--navy-ink);
   color: white;
-  border-radius: 14px;
-  padding: 32px 28px;
+  border-radius: var(--radius-lg);
+  padding: 28px;
   margin-bottom: 20px;
+  transition: background 0.3s var(--ease-standard);
 }
 
-.trip-status-label { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-.trip-status-detail { font-size: 14.5px; color: #C7CCD8; line-height: 1.5; max-width: 460px; }
+.trip-status-banner-completed { background: var(--success); }
+.trip-status-banner-cancelled,
+.trip-status-banner-no_drivers_found { background: var(--danger); }
+.trip-status-banner-driver_arriving,
+.trip-status-banner-in_progress { background: var(--navy-ink); box-shadow: var(--shadow-md); }
+
+.trip-status-label { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.trip-status-detail { font-size: 14.5px; color: rgba(255,255,255,0.78); line-height: 1.5; max-width: 460px; }
+
+.error-state {
+  text-align: center;
+  padding: var(--space-7) var(--space-4);
+  max-width: 360px;
+  margin: 0 auto;
+}
+.error-state-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-3);
+}
+.error-state-title { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+.error-state-detail { color: var(--ink-muted); font-size: 14px; margin-bottom: var(--space-4); }
 
 .trip-status-side { position: sticky; top: 88px; }
 
@@ -46,7 +75,9 @@
 .rating-card { text-align: center; max-width: 340px; }
 .rating-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
 .rating-stars { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; }
-.star { background: none; border: none; font-size: 30px; color: var(--line); cursor: pointer; padding: 0; }
+.star { background: none; border: none; font-size: 30px; color: var(--line); cursor: pointer; padding: 0; transition: transform 0.12s var(--ease-standard), color 0.12s ease; }
+.star:hover { transform: scale(1.15); color: var(--gold-soft); }
+.star:active { transform: scale(0.95); }
 .star-filled { color: var(--gold); }
 
 @media (max-width: 860px) {

@@ -6,6 +6,8 @@ these are not exposed to passengers or drivers.
 
 from django.db.models import Count, Q
 from django.utils import timezone
+from datetime import timedelta
+from decimal import Decimal
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -25,13 +27,41 @@ from zones.serializers import ServiceZoneSerializer
 
 
 class AdminZoneListView(APIView):
-    """GET /api/admin/zones"""
+    """GET/POST /api/admin/zones — create form was previously Django-admin-only."""
 
     permission_classes = [IsAdminRole]
 
     def get(self, request):
         zones = ServiceZone.objects.all().prefetch_related("pickup_points")
         return Response(ServiceZoneSerializer(zones, many=True).data)
+
+    def post(self, request):
+        serializer = ServiceZoneSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=201)
+
+
+class AdminZoneDetailView(APIView):
+    """PATCH/DELETE /api/admin/zones/<id>"""
+
+    permission_classes = [IsAdminRole]
+
+    def patch(self, request, zone_id):
+        try:
+            zone = ServiceZone.objects.get(id=zone_id)
+        except ServiceZone.DoesNotExist:
+            return Response({"detail": "Not found"}, status=404)
+        serializer = ServiceZoneSerializer(zone, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, zone_id):
+        deleted, _ = ServiceZone.objects.filter(id=zone_id).delete()
+        if not deleted:
+            return Response({"detail": "Not found"}, status=404)
+        return Response(status=204)
 
 
 class AdminPendingDriversView(APIView):
@@ -44,6 +74,26 @@ class AdminPendingDriversView(APIView):
             verification_status=Driver.VerificationStatus.PENDING
         ).select_related("user").prefetch_related("vehicles")
         return Response(DriverSerializer(drivers, many=True).data)
+
+
+class AdminDriverListView(APIView):
+    """GET /api/admin/drivers — full directory, optionally filtered by status/search."""
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        drivers = Driver.objects.select_related("user").prefetch_related("vehicles").order_by("-created_at")
+        status_param = request.query_params.get("status")
+        search = request.query_params.get("search")
+        if status_param:
+            drivers = drivers.filter(verification_status=status_param)
+        if search:
+            drivers = drivers.filter(
+                Q(user__name__icontains=search)
+                | Q(user__phone__icontains=search)
+                | Q(licence_number__icontains=search)
+            )
+        return Response(DriverSerializer(drivers[:200], many=True).data)
 
 
 class AdminDriverVerifyView(APIView):
@@ -69,11 +119,20 @@ class AdminDriverVerifyView(APIView):
             driver.is_online = False
         driver.save(update_fields=["verification_status", "is_online", "updated_at"])
 
-        from core.models import AuditLog
+        from core.models import AuditLog, notify
 
         AuditLog.objects.create(
             actor=request.user, action=f"driver.{action}", target_model="Driver", target_id=str(driver.id)
         )
+
+        notify_copy = {
+            "verify": ("You're verified!", "Ops approved your documents — you can go online now."),
+            "reject": ("Application not approved", "Ops couldn't verify your documents. Contact support for next steps."),
+            "suspend": ("Account suspended", "Your driver account has been suspended pending review."),
+        }
+        title, body = notify_copy[action]
+        notify(driver.user, title, body, category="driver", link="/profile")
+
         return Response(DriverSerializer(driver).data)
 
 
@@ -92,12 +151,18 @@ class AdminTripSearchView(APIView):
         status_param = request.query_params.get("status")
         zone_param = request.query_params.get("zone")
         phone_param = request.query_params.get("passenger_phone")
+        from_param = request.query_params.get("from")
+        to_param = request.query_params.get("to")
         if status_param:
             qs = qs.filter(status=status_param)
         if zone_param:
             qs = qs.filter(zone_id=zone_param)
         if phone_param:
             qs = qs.filter(passenger__phone__icontains=phone_param)
+        if from_param:
+            qs = qs.filter(requested_at__date__gte=from_param)
+        if to_param:
+            qs = qs.filter(requested_at__date__lte=to_param)
         return Response(TripSerializer(qs[:200], many=True).data)
 
 
@@ -125,6 +190,42 @@ class AdminSupportTicketListView(APIView):
         if request.query_params.get("status"):
             qs = qs.filter(status=request.query_params["status"])
         return Response(SupportTicketSerializer(qs[:200], many=True).data)
+
+
+class AdminDashboardTrendsView(APIView):
+    """
+    GET /api/admin/dashboard/trends — daily trip volume and completed-fare
+    revenue for the last 14 days, so the Overview page can chart a trend
+    instead of only showing today's snapshot numbers.
+    """
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        days = 14
+        today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        start = today - timedelta(days=days - 1)
+
+        trips = Trip.objects.filter(requested_at__gte=start)
+        buckets = {(start + timedelta(days=i)).date(): {"date": (start + timedelta(days=i)).date().isoformat(), "requested": 0, "completed": 0, "cancelled": 0, "revenue": Decimal("0")} for i in range(days)}
+
+        for trip in trips.only("requested_at", "status", "fare_final"):
+            key = timezone.localtime(trip.requested_at).date()
+            bucket = buckets.get(key)
+            if not bucket:
+                continue
+            bucket["requested"] += 1
+            if trip.status == Trip.Status.COMPLETED:
+                bucket["completed"] += 1
+                if trip.fare_final:
+                    bucket["revenue"] += trip.fare_final
+            elif trip.status == Trip.Status.CANCELLED:
+                bucket["cancelled"] += 1
+
+        series = sorted(buckets.values(), key=lambda b: b["date"])
+        for b in series:
+            b["revenue"] = str(b["revenue"])
+        return Response(series)
 
 
 class AdminDashboardSummaryView(APIView):

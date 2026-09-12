@@ -2,27 +2,29 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import AuthLayout from "../components/AuthLayout";
+import PasswordField from "../components/PasswordField";
 import "../components/authForm.css";
 
 export default function SignUp() {
-  const { requestOtp, verifyOtp, updateName } = useAuth();
+  const { requestSignupCode, signup } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<"details" | "code">("details");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function handleRequestOtp(e: FormEvent) {
+  async function handleRequestCode(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await requestOtp(phone);
+      await requestSignupCode(email);
       setStep("code");
     } catch {
-      setError("Couldn't send a code to that number. Check it and try again.");
+      setError("Couldn't send a code to that email. Check it and try again.");
     } finally {
       setBusy(false);
     }
@@ -33,10 +35,7 @@ export default function SignUp() {
     setError(null);
     setBusy(true);
     try {
-      await verifyOtp(phone, code);
-      if (name.trim()) {
-        await updateName(name.trim());
-      }
+      await signup(email, code, password, name.trim());
       navigate("/");
     } catch (err: any) {
       setError(err?.response?.data?.detail || "That code didn't work. Try again.");
@@ -50,8 +49,8 @@ export default function SignUp() {
       {step === "details" ? (
         <>
           <h2>Create your account</h2>
-          <p className="auth-subtitle">Just your name and number — no password needed.</p>
-          <form onSubmit={handleRequestOtp}>
+          <p className="auth-subtitle">We'll email you a code to verify it's really you.</p>
+          <form onSubmit={handleRequestCode}>
             <label htmlFor="name">Full name</label>
             <input
               id="name"
@@ -62,25 +61,35 @@ export default function SignUp() {
               required
               autoFocus
             />
-            <label htmlFor="phone">Phone number</label>
+            <label htmlFor="email">Email address</label>
             <input
-              id="phone"
-              type="tel"
-              placeholder="+233 XX XXX XXXX"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              id="email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               required
+            />
+            <label htmlFor="password">Password</label>
+            <PasswordField
+              id="password"
+              value={password}
+              onChange={setPassword}
+              autoComplete="new-password"
+              minLength={8}
+              placeholder="At least 8 characters"
             />
             {error && <div className="auth-error">{error}</div>}
             <button className="btn btn-primary btn-block" type="submit" disabled={busy}>
-              {busy ? "Sending…" : "Send code"}
+              {busy ? "Sending…" : "Send verification code"}
             </button>
           </form>
         </>
       ) : (
         <>
-          <h2>Enter your code</h2>
-          <p className="auth-subtitle">We sent a 6-digit code to {phone}.</p>
+          <h2>Check your email</h2>
+          <p className="auth-subtitle">We sent a 6-digit code to {email}.</p>
           <form onSubmit={handleVerify}>
             <label htmlFor="code">Verification code</label>
             <input
@@ -96,7 +105,7 @@ export default function SignUp() {
             />
             {error && <div className="auth-error">{error}</div>}
             <button className="btn btn-primary btn-block" type="submit" disabled={busy}>
-              {busy ? "Verifying…" : "Create account"}
+              {busy ? "Creating account…" : "Create account"}
             </button>
           </form>
           <button

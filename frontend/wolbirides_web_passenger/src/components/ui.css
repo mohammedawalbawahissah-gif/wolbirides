@@ -5,9 +5,10 @@
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.12s ease, transform 0.05s ease;
+  transition: opacity 0.12s ease, transform 0.05s ease, box-shadow 0.12s ease;
 }
 .btn:active { transform: scale(0.98); }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gold-soft); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-block { width: 100%; }
 .btn-primary { background: var(--navy-ink); color: white; }
@@ -39,6 +40,7 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 16px;
+  transition: box-shadow 0.15s var(--ease-standard);
 }
 
 .empty-state {
@@ -46,6 +48,12 @@
   text-align: center;
   color: var(--ink-muted);
   font-size: 14px;
+  animation: fade-in-up 0.25s var(--ease-standard);
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .field-label {
@@ -66,4 +74,4 @@
   background: var(--paper-raised);
 }
 
-.field-input:focus { border-color: var(--gold); }
+.field-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); outline: none; }

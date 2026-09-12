@@ -1,0 +1,26 @@
+.apply-card { max-width: 480px; margin: 0 auto; }
+
+.apply-step-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.apply-step-actions .btn-gold { flex: 1; }
+
+.apply-review {
+  background: var(--paper);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.apply-review-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13.5px;
+  padding: 6px 0;
+}
+
+.apply-review-row:not(:last-child) { border-bottom: 1px solid var(--line); }

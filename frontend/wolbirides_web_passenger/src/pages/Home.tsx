@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type ServiceZone } from "../api/client";
 import PinPicker, { type LatLng } from "../components/PinPicker";
+import { SkeletonBlock } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
 import "./Home.css";
 
 function haversineKm(a: LatLng, b: LatLng) {
@@ -17,16 +19,21 @@ function haversineKm(a: LatLng, b: LatLng) {
 
 export default function Home() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [zone, setZone] = useState<ServiceZone | null>(null);
+  const [zonesLoaded, setZonesLoaded] = useState(false);
   const [pickup, setPickup] = useState<LatLng | null>(null);
   const [destination, setDestination] = useState<LatLng | null>(null);
   const [requesting, setRequesting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<ServiceZone[]>("/zones").then(({ data }) => {
-      if (data.length > 0) setZone(data[0]);
-    });
+    api
+      .get<ServiceZone[]>("/zones")
+      .then(({ data }) => {
+        if (data.length > 0) setZone(data[0]);
+      })
+      .catch(() => toast.show("Couldn't load service zones — check your connection.", "error"))
+      .finally(() => setZonesLoaded(true));
   }, []);
 
   const distanceKm = pickup && destination ? haversineKm(pickup, destination) : null;
@@ -38,7 +45,6 @@ export default function Home() {
   async function requestRide() {
     if (!zone || !pickup || !destination || distanceKm == null) return;
     setRequesting(true);
-    setError(null);
     try {
       const { data } = await api.post("/trips", {
         zone_id: zone.id,
@@ -50,16 +56,45 @@ export default function Home() {
         destination_label: "Destination",
         distance_km: distanceKm.toFixed(2),
       });
+      toast.show("Ride requested — finding you a driver.", "success");
       navigate(`/trip/${data.id}`);
     } catch {
-      setError("Couldn't request a ride right now. Try again in a moment.");
+      toast.show("Couldn't request a ride right now. Try again in a moment.", "error");
     } finally {
       setRequesting(false);
     }
   }
 
+  if (!zonesLoaded) {
+    return (
+      <div>
+        <div className="page-heading">
+          <SkeletonBlock height={28} width="40%" />
+        </div>
+        <div className="ride-layout">
+          <div className="ride-map-col">
+            <SkeletonBlock height={280} radius={14} />
+            <div style={{ height: 16 }} />
+            <SkeletonBlock height={280} radius={14} />
+          </div>
+          <aside className="ride-panel-col">
+            <div className="card">
+              <SkeletonBlock height={20} width="50%" />
+              <div style={{ height: 16 }} />
+              <SkeletonBlock height={44} radius={10} />
+            </div>
+          </aside>
+        </div>
+      </div>
+    );
+  }
+
   if (!zone) {
-    return <div className="empty-state">No active service zone yet — check back once the pilot zone is live.</div>;
+    return (
+      <div className="empty-state">
+        <p>No active service zone yet — check back once the pilot zone is live.</p>
+      </div>
+    );
   }
 
   const mapCenter: LatLng = {
@@ -102,8 +137,6 @@ export default function Home() {
                 <div className="fare-distance">{distanceKm!.toFixed(1)} km</div>
               </div>
             )}
-
-            {error && <div className="auth-error">{error}</div>}
 
             <button
               className="btn btn-gold btn-block"

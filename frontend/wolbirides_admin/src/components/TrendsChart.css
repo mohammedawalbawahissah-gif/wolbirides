@@ -1,0 +1,24 @@
+.chart-panel {
+  background: var(--paper-raised, #fff);
+  border: 1px solid var(--line, #E1DFD7);
+  border-radius: 14px;
+  padding: 18px 16px 8px;
+}
+
+.chart-panel h2 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 8px 4px;
+  color: var(--ink, #1B1F27);
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+
+@media (max-width: 900px) {
+  .charts-grid { grid-template-columns: 1fr; }
+}

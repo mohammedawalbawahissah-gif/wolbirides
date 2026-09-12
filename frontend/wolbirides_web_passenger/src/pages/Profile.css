@@ -1,1 +1,32 @@
 .profile-card { max-width: 420px; }
+
+.profile-muted { font-size: 13.5px; color: var(--ink-muted); }
+
+.saved-address-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.saved-address-label { font-weight: 600; font-size: 14px; }
+.saved-address-text { font-size: 12.5px; color: var(--ink-muted); }
+
+.saved-address-remove {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+}
+.saved-address-remove:hover { color: var(--danger); }
+
+.saved-address-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.saved-address-add .field-input { margin-bottom: 0; flex: 1; }
+
