@@ -11,5 +11,6 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(Payout)
 class PayoutAdmin(admin.ModelAdmin):
-    list_display = ["driver", "period_start", "period_end", "amount", "status"]
+    list_display = ["driver", "period_start", "period_end", "amount", "status", "commission_rate_snapshot", "retry_count"]
     list_filter = ["status"]
+    readonly_fields = ["line_items"]

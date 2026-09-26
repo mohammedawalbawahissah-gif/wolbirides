@@ -10,6 +10,8 @@ const emptyForm = {
   max_lat: "",
   min_lng: "",
   max_lng: "",
+  security_contact_name: "",
+  security_contact_phone: "",
 };
 
 export default function Zones() {
@@ -42,6 +44,8 @@ export default function Zones() {
         name: form.name,
         base_fare: form.base_fare,
         per_km_rate: form.per_km_rate,
+        security_contact_name: form.security_contact_name,
+        security_contact_phone: form.security_contact_phone,
         active: true,
         boundary: {
           min_lat: Number(form.min_lat),
@@ -114,6 +118,15 @@ export default function Zones() {
             <label>
               Max longitude
               <input required type="number" step="0.000001" value={form.max_lng} onChange={(e) => updateField("max_lng", e.target.value)} />
+            </label>
+            <label>
+              SOS contact name (e.g. campus security)
+              <input value={form.security_contact_name} onChange={(e) => setForm({ ...form, security_contact_name: e.target.value })} />
+            </label>
+            <label>
+              SOS contact phone (gets an SMS on every SOS here)
+              <input value={form.security_contact_phone} inputMode="tel"
+                onChange={(e) => setForm({ ...form, security_contact_phone: e.target.value })} />
             </label>
           </div>
           {formError && <div className="zone-form-error">{formError}</div>}

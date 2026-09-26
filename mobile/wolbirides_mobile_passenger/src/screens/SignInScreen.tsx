@@ -1,48 +1,27 @@
 import { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
+import { COPY } from "../appConfig";
 import { Button, ErrorBanner, FieldLabel, TextField } from "../components/ui";
 import { colors, spacing } from "../theme";
 import type { AuthStackScreenProps } from "../navigation/types";
 
 export default function SignInScreen({ navigation }: AuthStackScreenProps<"SignIn">) {
-  const { requestOtp, verifyOtp } = useAuth();
-  const [step, setStep] = useState<"phone" | "code">("phone");
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function handleRequestOtp() {
+  async function handleSignIn() {
     setError(null);
     setBusy(true);
     try {
-      await requestOtp(phone);
-      setStep("code");
-    } catch {
-      setError("Couldn't send a code to that number. Check it and try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleVerify() {
-    setError(null);
-    setBusy(true);
-    try {
-      await verifyOtp(phone, code);
-      // RootNavigator swaps to the main stack automatically once `user` is set.
+      await login(email.trim().toLowerCase(), password);
+      // RootNavigator swaps to the main stack once `user` is set.
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "That code didn't work. Try again.");
+      setError(err?.response?.data?.detail || "That email and password don't match. Try again.");
     } finally {
       setBusy(false);
     }
@@ -53,42 +32,23 @@ export default function SignInScreen({ navigation }: AuthStackScreenProps<"SignI
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <View style={styles.hero}>
           <View style={styles.logoMark}><Text style={styles.logoMarkText}>WR</Text></View>
-          <Text style={styles.heroTitle}>WolbiRides</Text>
-          <Text style={styles.heroSubtitle}>Request a yellow-yellow, see it coming, ride with confidence.</Text>
+          <Text style={styles.heroTitle}>{COPY.signInTitle}</Text>
+          <Text style={styles.heroSubtitle}>{COPY.signInSubtitle}</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.formArea} keyboardShouldPersistTaps="handled">
-          {step === "phone" ? (
-            <>
-              <FieldLabel>Phone number</FieldLabel>
-              <TextField
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="+233 XX XXX XXXX"
-                keyboardType="phone-pad"
-                autoFocus
-              />
-              {error && <ErrorBanner message={error} />}
-              <Button title={busy ? "Sending…" : "Send code"} onPress={handleRequestOtp} variant="primary" loading={busy} />
-            </>
-          ) : (
-            <>
-              <FieldLabel>{`Enter the code sent to ${phone}`}</FieldLabel>
-              <TextField
-                value={code}
-                onChangeText={setCode}
-                placeholder="6-digit code"
-                keyboardType="number-pad"
-                maxLength={6}
-                autoFocus
-              />
-              {error && <ErrorBanner message={error} />}
-              <Button title={busy ? "Verifying…" : "Sign in"} onPress={handleVerify} variant="primary" loading={busy} />
-              <TouchableOpacity onPress={() => { setStep("phone"); setError(null); }} style={styles.backLink}>
-                <Text style={styles.backLinkText}>Use a different number</Text>
-              </TouchableOpacity>
-            </>
-          )}
+          <FieldLabel>Email</FieldLabel>
+          <TextField value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address"
+            autoCapitalize="none" autoComplete="email" autoFocus />
+          <FieldLabel>Password</FieldLabel>
+          <TextField value={password} onChangeText={setPassword} placeholder="Your password" secureTextEntry
+            autoComplete="password" />
+          <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")} style={{ alignSelf: "flex-end", marginBottom: spacing.sm }}>
+            <Text style={styles.switchLink}>Forgot password?</Text>
+          </TouchableOpacity>
+          {error && <ErrorBanner message={error} />}
+          <Button title={busy ? "Signing in…" : "Sign in"} onPress={handleSignIn} variant="primary" loading={busy}
+            disabled={!email.trim() || !password} />
 
           <View style={styles.switchRow}>
             <Text style={styles.switchText}>New to WolbiRides? </Text>
@@ -102,7 +62,7 @@ export default function SignInScreen({ navigation }: AuthStackScreenProps<"SignI
   );
 }
 
-const styles = StyleSheet.create({
+export const authStyles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.paper },
   hero: {
     backgroundColor: colors.navyInk,
@@ -126,3 +86,4 @@ const styles = StyleSheet.create({
   switchText: { fontSize: 13.5, color: colors.inkMuted },
   switchLink: { fontSize: 13.5, color: colors.navyInk, fontWeight: "700", textDecorationLine: "underline" },
 });
+const styles = authStyles;

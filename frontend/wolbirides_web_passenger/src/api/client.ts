@@ -1,7 +1,11 @@
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
-const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || "ws://localhost:8000";
+// Dev: talk to Django directly. Production builds (e.g. Docker) default to the
+// same origin, where nginx proxies /api and /ws to the backend.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8001/api" : "/api");
+const WS_BASE_URL =
+  import.meta.env.VITE_WS_BASE_URL ||
+  (import.meta.env.DEV ? "ws://localhost:8001" : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
 
 export { WS_BASE_URL };
 
@@ -26,8 +30,15 @@ async function refreshAccessToken(): Promise<string | null> {
   try {
     const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refresh });
     localStorage.setItem("wolbirides_access", data.access);
+    // Refresh tokens rotate: keep the new one, or the next refresh would be refused.
+    if (data.refresh) localStorage.setItem("wolbirides_refresh", data.refresh);
     return data.access as string;
   } catch {
+    // Another open tab may have refreshed first (rotation makes our copy stale). If it
+    // saved a newer token, use that instead of signing this tab out.
+    await new Promise((r) => setTimeout(r, 400));
+    const latest = localStorage.getItem("wolbirides_refresh");
+    if (latest && latest !== refresh) return localStorage.getItem("wolbirides_access");
     return null;
   }
 }
@@ -65,6 +76,50 @@ export interface WolbiUser {
   role: "passenger" | "driver" | "admin" | "support";
   otp_verified: boolean;
   profile_photo: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+}
+
+export interface SuggestedRide {
+  pickup_label: string;
+  pickup_lat: string;
+  pickup_lng: string;
+  destination_label: string;
+  destination_lat: string;
+  destination_lng: string;
+  trip_count: number;
+}
+
+export interface RecurringRide {
+  id: string;
+  pickup: string;
+  destination: string;
+  pickup_detail: SavedAddress;
+  destination_detail: SavedAddress;
+  days_of_week: number[];
+  time_of_day: string;
+  active: boolean;
+}
+
+export interface NotificationPref {
+  category: string;
+  label: string;
+  enabled: boolean;
+}
+
+export interface DraftTrip {
+  pickup_label: string;
+  pickup_lat: number;
+  pickup_lng: number;
+  destination_label: string;
+  destination_lat: number;
+  destination_lng: number;
+}
+
+export interface SOSResult {
+  incident_id: string;
+  emergency_number: string;
+  contact_notified: boolean;
 }
 
 export interface SavedAddress {
@@ -90,6 +145,9 @@ export interface FareQuote {
   distance_km: string;
   base_fare: string;
   per_km_charge: string;
+  surcharge?: string;
+  discount?: string;
+  discount_reason?: string;
   total: string;
   expires_at: string;
 }
@@ -141,6 +199,23 @@ export interface Trip {
   matched_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  kind?: "ride" | "delivery";
+  payment_method?: "cash" | "momo" | "organization" | "voucher" | "bundle";
+  organization_name?: string | null;
+  recipient_name?: string;
+  recipient_phone?: string;
+  package_description?: string;
+  delivery_code?: string | null;
+  trip_type?: "ride" | "delivery";
+  shareable?: boolean;
+  rated_by_me?: boolean;
+  pool_seat_fare?: string | null;
+  pool_info?: { pool_group: string; open: boolean; rider_count: number } | null;
+  preference_status?: "" | "awaiting_rider" | "keep_waiting" | "relaxed";
+  delivery?: {
+    recipient_name: string; recipient_phone: string; package_description: string; package_size: string;
+    picked_up_at: string | null; pickup_code: string | null; dropoff_code: string | null;
+  } | null;
 }
 
 export interface ServiceZone {
@@ -150,4 +225,7 @@ export interface ServiceZone {
   base_fare: string;
   per_km_rate: string;
   active: boolean;
+  delivery_surcharge?: string;
+  pool_max_riders?: number;
+  pickup_points?: { id: string; name: string; latitude: string; longitude: string; sponsor_name?: string }[];
 }

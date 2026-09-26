@@ -42,7 +42,24 @@ export default function OfferModal({
           <div className="offer-timer-fill" style={{ width: `${pct}%` }} />
         </div>
 
-        <div className="offer-title">New ride request</div>
+        <div className="offer-title">
+          {(offer.trip_type ?? offer.kind) === "delivery" ? "New delivery request"
+            : offer.pool_legs ? "Shared ride: 2 riders" : "New ride request"}
+        </div>
+        {(offer.trip_type ?? offer.kind) === "delivery" && offer.package_description && (
+          <div className="offer-tag offer-tag-delivery">
+            Package: {offer.package_description}{offer.package_size ? ` (${offer.package_size})` : ""}
+          </div>
+        )}
+        {offer.pool_legs && (
+          <ol className="offer-legs">
+            {offer.pool_legs.map((leg) => (
+              <li key={`${leg.type}-${leg.trip_id}`}>
+                {leg.type === "pickup" ? "Pick up" : "Drop off"} {leg.first_name}: {leg.label || "—"}
+              </li>
+            ))}
+          </ol>
+        )}
         <div className="offer-route">
           <div className="offer-route-row"><span className="trip-dot trip-dot-pickup" /> {offer.pickup_label}</div>
           <div className="offer-route-row"><span className="trip-dot trip-dot-dest" /> {offer.destination_label}</div>

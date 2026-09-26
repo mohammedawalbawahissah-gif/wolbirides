@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { api, type Trip } from "../api/client";
+import { useTripHistory } from "../hooks/useTripHistory";
 
 const STATUS_TONE: Record<string, string> = {
   completed: "badge-success",
@@ -11,11 +10,7 @@ function formatTime(iso: string) {
 }
 
 export default function Trips() {
-  const [trips, setTrips] = useState<Trip[] | null>(null);
-
-  useEffect(() => {
-    api.get<Trip[]>("/drivers/me/trips").then(({ data }) => setTrips(data));
-  }, []);
+  const { trips, hasMore, loadingMore, loadMore } = useTripHistory("/drivers/me/trips");
 
   return (
     <div>
@@ -45,6 +40,13 @@ export default function Trips() {
           </div>
         ))}
       </div>
+      {hasMore && (
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Load older trips"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

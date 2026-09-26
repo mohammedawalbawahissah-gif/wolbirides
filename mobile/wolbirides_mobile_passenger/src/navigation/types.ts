@@ -5,6 +5,7 @@ import type { CompositeScreenProps } from "@react-navigation/native";
 export type AuthStackParamList = {
   SignIn: undefined;
   SignUp: undefined;
+  ForgotPassword: undefined;
 };
 
 export type AuthStackScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<
@@ -13,13 +14,16 @@ export type AuthStackScreenProps<T extends keyof AuthStackParamList> = NativeSta
 >;
 
 export type MainTabParamList = {
-  Ride: undefined;
+  // WR-13: "Ride again" from History pre-fills the route.
+  Ride: { rebook?: { pickup: { lat: number; lng: number; label: string }; destination: { lat: number; lng: number; label: string } } } | undefined;
   History: undefined;
   Profile: undefined;
 };
 
 export type RootStackParamList = {
-  MainTabs: undefined;
+  MainTabs: undefined | { screen: string };
+  Notifications: undefined;
+  Assistant: { tripId?: string; label?: string; message?: string } | undefined;
   TripStatus: { tripId: string };
 };
 

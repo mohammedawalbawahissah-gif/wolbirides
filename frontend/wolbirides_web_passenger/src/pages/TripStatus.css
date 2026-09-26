@@ -84,3 +84,16 @@
   .trip-status-layout { grid-template-columns: 1fr; }
   .trip-status-side { position: static; }
 }
+
+.trip-fare-sub { font-size: 13px; color: var(--ink-muted); }
+.delivery-box {
+  margin: 12px 0; padding: 12px; border-radius: var(--radius-sm); background: var(--paper);
+  font-size: 13.5px; display: flex; flex-direction: column; gap: 4px;
+}
+.delivery-code { margin-top: 6px; }
+.delivery-code strong { font-size: 22px; letter-spacing: 4px; color: var(--navy-ink); margin-left: 6px; }
+.delivery-code span { display: block; font-size: 12.5px; color: var(--ink-muted); }
+
+.trip-help { margin-top: 12px; font-size: 14px; }
+.trip-help summary { cursor: pointer; color: var(--ink-muted); padding: 6px 0; }
+.trip-help form { margin-top: 8px; }

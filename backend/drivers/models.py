@@ -36,6 +36,15 @@ class Driver(TimeStampedModel):
     current_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     last_ping_at = models.DateTimeField(null=True, blank=True)
 
+    # WR-19 / WR-23: what this driver offers, matched against passenger preferences.
+    offers_quiet_ride = models.BooleanField(default=False)
+    has_luggage_space = models.BooleanField(default=False)
+    accessibility_trained = models.BooleanField(default=False)
+    accepts_deliveries = models.BooleanField(default=False)
+    # WR-19: optional, self-reported, used only by matching. Never shown anywhere else.
+    gender = models.CharField(max_length=10, blank=True, default="",
+                              choices=[("", "Not stated"), ("female", "Female"), ("male", "Male")])
+
     emergency_contact_name = models.CharField(max_length=150, blank=True)
     emergency_contact_phone = models.CharField(max_length=20, blank=True)
 

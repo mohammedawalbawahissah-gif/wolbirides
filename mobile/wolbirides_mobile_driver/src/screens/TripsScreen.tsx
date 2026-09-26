@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
-import { api, type Trip } from "../api/client";
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useTripHistory } from "../hooks/useTripHistory";
 import { Badge, EmptyState } from "../components/ui";
 import { colors, spacing, typography } from "../theme";
 
@@ -14,11 +13,7 @@ function formatTime(iso: string) {
 }
 
 export default function TripsScreen() {
-  const [trips, setTrips] = useState<Trip[] | null>(null);
-
-  useEffect(() => {
-    api.get<Trip[]>("/drivers/me/trips").then(({ data }) => setTrips(data));
-  }, []);
+  const { trips, hasMore, loadingMore, loadMore } = useTripHistory("/drivers/me/trips");
 
   return (
     <View style={styles.screen}>
@@ -31,6 +26,14 @@ export default function TripsScreen() {
       {trips && trips.length === 0 && <EmptyState message="No trips yet — accepted rides will show up here." />}
 
       <FlatList
+        ListFooterComponent={hasMore ? (
+          <TouchableOpacity onPress={loadMore} disabled={loadingMore} accessibilityRole="button"
+            style={{ alignItems: "center", paddingVertical: 16 }}>
+            <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>
+              {loadingMore ? "Loading…" : "Load older trips"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         data={trips ?? []}
         keyExtractor={(t) => t.id}
         contentContainerStyle={styles.listContent}

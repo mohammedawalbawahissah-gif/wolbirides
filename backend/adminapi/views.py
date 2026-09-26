@@ -9,11 +9,10 @@ from django.utils import timezone
 from datetime import timedelta
 from decimal import Decimal
 from rest_framework.generics import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.permissions import IsAdminRole
+from core.permissions import IsAdminRole, IsStaffRole
 from drivers.models import Driver
 from drivers.serializers import DriverSerializer
 from incidents.models import Incident
@@ -23,7 +22,7 @@ from support.serializers import SupportTicketSerializer
 from trips.models import Trip
 from trips.serializers import TripSerializer
 from zones.models import ServiceZone
-from zones.serializers import ServiceZoneSerializer
+from zones.serializers import AdminServiceZoneSerializer as ServiceZoneSerializer
 
 
 class AdminZoneListView(APIView):
@@ -118,6 +117,10 @@ class AdminDriverVerifyView(APIView):
         if action != "verify":
             driver.is_online = False
         driver.save(update_fields=["verification_status", "is_online", "updated_at"])
+        if action != "verify":
+            from drivers.services import take_driver_offline
+
+            take_driver_offline(driver, reason="suspended" if action == "suspend" else "rejected")
 
         from core.models import AuditLog, notify
 
@@ -144,10 +147,12 @@ class AdminTripSearchView(APIView):
     settings) — this view returns the raw queryset through that.
     """
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsStaffRole]
 
     def get(self, request):
-        qs = Trip.objects.select_related("fare_quote", "driver__user", "passenger").order_by("-requested_at")
+        from trips.services import trip_list_queryset
+
+        qs = trip_list_queryset().order_by("-requested_at")
         status_param = request.query_params.get("status")
         zone_param = request.query_params.get("zone")
         phone_param = request.query_params.get("passenger_phone")
@@ -169,7 +174,7 @@ class AdminTripSearchView(APIView):
 class AdminIncidentListView(APIView):
     """GET /api/admin/incidents?status=&severity="""
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsStaffRole]
 
     def get(self, request):
         qs = Incident.objects.select_related("trip", "reported_by").order_by("-created_at")
@@ -183,13 +188,41 @@ class AdminIncidentListView(APIView):
 class AdminSupportTicketListView(APIView):
     """GET /api/admin/support/tickets?status="""
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsStaffRole]
 
     def get(self, request):
         qs = SupportTicket.objects.select_related("user").order_by("-created_at")
         if request.query_params.get("status"):
             qs = qs.filter(status=request.query_params["status"])
         return Response(SupportTicketSerializer(qs[:200], many=True).data)
+
+
+class AdminSupportTicketUpdateView(APIView):
+    """PATCH /api/admin/support/tickets/<id> {status} — staff move a ticket along; the person who raised it is told."""
+
+    permission_classes = [IsStaffRole]
+
+    def patch(self, request, ticket_id):
+        from django.shortcuts import get_object_or_404
+        from django.utils import timezone
+
+        from core.models import notify
+
+        ticket = get_object_or_404(SupportTicket, id=ticket_id)
+        new_status = request.data.get("status")
+        if new_status not in SupportTicket.Status.values:
+            return Response({"detail": "status must be open, in_progress or resolved."}, status=400)
+        if new_status != ticket.status:
+            ticket.status = new_status
+            ticket.assigned_to = request.user if new_status != SupportTicket.Status.OPEN else ticket.assigned_to
+            ticket.resolved_at = timezone.now() if new_status == SupportTicket.Status.RESOLVED else None
+            ticket.save(update_fields=["status", "assigned_to", "resolved_at", "updated_at"])
+            if new_status in (SupportTicket.Status.IN_PROGRESS, SupportTicket.Status.RESOLVED):
+                notify(ticket.user,
+                       "Your support request is resolved" if new_status == SupportTicket.Status.RESOLVED
+                       else "We're looking into your support request",
+                       ticket.subject, category="system")
+        return Response(SupportTicketSerializer(ticket).data)
 
 
 class AdminDashboardTrendsView(APIView):
@@ -199,7 +232,7 @@ class AdminDashboardTrendsView(APIView):
     instead of only showing today's snapshot numbers.
     """
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsStaffRole]
 
     def get(self, request):
         days = 14
@@ -236,7 +269,7 @@ class AdminDashboardSummaryView(APIView):
     (WR-11's 1,000-ride learning milestone); revisit if query cost grows.
     """
 
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsStaffRole]
 
     def get(self, request):
         today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)

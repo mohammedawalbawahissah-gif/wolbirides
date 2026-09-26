@@ -19,3 +19,14 @@ def check_dispatch_offer_timeout(trip_id, offered_driver_id):
         return
     if trip.status == Trip.Status.MATCHING:
         decline_or_timeout(trip, offered_driver_id)
+
+
+@shared_task
+def retry_preference_dispatch(trip_id):
+    """WR-19: the rider chose to keep waiting for a driver matching their preference."""
+    from trips.models import Trip
+    from trips.services import _dispatch
+
+    trip = Trip.objects.filter(id=trip_id).first()
+    if trip and trip.status == Trip.Status.MATCHING and trip.preference_status == Trip.PreferenceStatus.KEEP_WAITING:
+        _dispatch(trip)

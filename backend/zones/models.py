@@ -16,6 +16,9 @@ class ServiceZone(TimeStampedModel):
     boundary = models.JSONField(
         help_text="GeoJSON polygon or simple bounding-box dict {min_lat, max_lat, min_lng, max_lng}"
     )
+    # WR-18: who gets an SMS when someone presses SOS in this zone (e.g. campus security).
+    security_contact_name = models.CharField(max_length=150, blank=True)
+    security_contact_phone = models.CharField(max_length=20, blank=True)
     base_fare = models.DecimalField(max_digits=8, decimal_places=2)
     per_km_rate = models.DecimalField(max_digits=8, decimal_places=2)
     active = models.BooleanField(default=True)
@@ -30,6 +33,8 @@ class PickupPoint(TimeStampedModel):
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     is_campus_point = models.BooleanField(default=False)
+    # WR-24: a local business can sponsor a pickup point. Always shown labelled "Sponsored".
+    sponsor_name = models.CharField(max_length=150, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.zone.name})"

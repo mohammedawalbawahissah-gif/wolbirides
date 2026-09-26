@@ -48,4 +48,33 @@ def set_driver_online(driver, is_online, zone=None):
     if zone is not None:
         driver.current_zone = zone
     driver.save(update_fields=["is_online", "current_zone", "updated_at"])
+    if not is_online:
+        take_driver_offline(driver, reason="went_offline")
     return driver
+
+
+def take_driver_offline(driver, reason="offline"):
+    """
+    The single way a driver stops receiving work: offline in the database,
+    removed from live dispatch in Redis, and told over their socket (their app
+    stops pinging). Used when they go offline, and on every suspension
+    (SOS / P0-P1 incident, or an admin action).
+    """
+    import logging
+
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    from trips.matching import driver_group_name, remove_driver_location_sync
+
+    Driver.objects.filter(id=driver.id).update(is_online=False)
+    try:
+        remove_driver_location_sync(str(driver.user_id), str(driver.current_zone_id) if driver.current_zone_id else None)
+    except Exception:
+        logging.getLogger(__name__).warning("Couldn't clear live location for driver %s", driver.id)
+    try:
+        async_to_sync(get_channel_layer().group_send)(
+            driver_group_name(str(driver.user_id)), {"type": "force_offline", "reason": reason}
+        )
+    except Exception:
+        logging.getLogger(__name__).warning("Couldn't notify driver %s to go offline", driver.id)

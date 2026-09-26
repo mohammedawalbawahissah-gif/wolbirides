@@ -9,6 +9,7 @@ interface AuthContextValue {
   refreshUser: () => Promise<void>;
   updateProfilePhoto: (url: string) => Promise<void>;
   logout: () => void;
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,6 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data);
   }
 
+  async function resetPassword(email: string, code: string, newPassword: string) {
+    const { data } = await api.post("/auth/password/reset/confirm", { email, code, new_password: newPassword });
+    storeSession(data);
+    setUser(data.user);
+  }
+
   function logout() {
     localStorage.removeItem("wolbirides_driver_access");
     localStorage.removeItem("wolbirides_driver_refresh");
@@ -65,13 +72,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, requestSignupCode, signup, login, refreshUser, updateProfilePhoto, logout }}
+      value={{ user, requestSignupCode, signup, login, refreshUser, updateProfilePhoto, logout, resetPassword }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
 
+// eslint-disable-next-line react/only-export-components -- exports this module's hook/helpers next to its component (standard pattern); only affects dev hot-reload
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");

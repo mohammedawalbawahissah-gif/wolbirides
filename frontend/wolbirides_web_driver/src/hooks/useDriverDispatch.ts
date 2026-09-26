@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WS_BASE_URL, type RideOffer } from "../api/client";
 
-const PING_INTERVAL_MS = 5000;
+// The server says how hard to track (see trips/consumers.py): precise and frequent
+// while heading to or carrying a rider, lighter while waiting for work.
+const PING_INTERVAL_MS = { active: 5000, idle: 15000 } as const;
+type TrackingMode = keyof typeof PING_INTERVAL_MS;
 
 /**
  * Manages the driver's /ws/driver/location/ connection: sends a location
@@ -17,8 +20,14 @@ const PING_INTERVAL_MS = 5000;
  * phone up with the browser tab open), but it is not a substitute for the
  * native app's background tracking.
  */
-export function useDriverDispatch(zoneId: string | null, online: boolean) {
+export function useDriverDispatch(zoneId: string | null, online: boolean, onForcedOffline?: (reason: string) => void) {
   const [connected, setConnected] = useState(false);
+  const [mode, setMode] = useState<TrackingMode>("idle");
+  const modeRef = useRef<TrackingMode>("idle");
+  const forcedOfflineRef = useRef(onForcedOffline);
+  useEffect(() => {
+    forcedOfflineRef.current = onForcedOffline;
+  }, [onForcedOffline]);
   const [offer, setOffer] = useState<RideOffer | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
@@ -34,26 +43,13 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
     if (!online || !zoneId) {
       wsRef.current?.close();
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+      // eslint-disable-next-line react-hooks-js/set-state-in-effect -- resets loading/error state as the effect starts a fetch or subscription
       setConnected(false);
       return;
     }
 
     let cancelled = false;
     let retryTimeout: ReturnType<typeof setTimeout>;
-
-    if ("geolocation" in navigator) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (pos) => {
-          lastPositionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setLocationError(null);
-        },
-        () => setLocationError("Location access denied — turn on location sharing to receive ride requests."),
-        { enableHighAccuracy: true, maximumAge: 10000 }
-      );
-    } else {
-      setLocationError("This browser doesn't support location — try a different device.");
-    }
 
     function connect() {
       const token = localStorage.getItem("wolbirides_driver_access");
@@ -64,13 +60,18 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
         if (cancelled) return;
         setConnected(true);
         retryRef.current = 0;
+        startPinging(ws);
+      };
+
+      function startPinging(ws: WebSocket) {
+        if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = setInterval(() => {
           const pos = lastPositionRef.current;
           if (pos && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "location.ping", lat: pos.lat, lng: pos.lng, zone_id: zoneId }));
           }
-        }, PING_INTERVAL_MS);
-      };
+        }, PING_INTERVAL_MS[modeRef.current]);
+      }
 
       ws.onmessage = (event) => {
         if (cancelled) return;
@@ -80,6 +81,16 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
             setOffer(msg.trip);
           } else if (msg.type === "trip_cancelled") {
             setOffer(null);
+          } else if (msg.type === "tracking_mode" && (msg.mode === "active" || msg.mode === "idle")) {
+            if (msg.mode !== modeRef.current) {
+              modeRef.current = msg.mode;
+              setMode(msg.mode);
+              startPinging(ws);
+            }
+          } else if (msg.type === "force_offline") {
+            // Suspended, rejected or switched offline elsewhere: stop at once and let the page refresh the driver.
+            setOffer(null);
+            forcedOfflineRef.current?.(msg.reason ?? "offline");
           }
         } catch {
           // ignore malformed frames
@@ -103,10 +114,31 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
       cancelled = true;
       clearTimeout(retryTimeout);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
       wsRef.current?.close();
     };
   }, [online, zoneId]);
 
-  return { connected, offer, locationError, clearOffer };
+  // GPS runs separately so a tracking-mode change only restarts the location watch,
+  // never the socket. High accuracy only while a rider is waiting or on board.
+  useEffect(() => {
+    if (!online || !zoneId) return;
+    if (!("geolocation" in navigator)) {
+      // eslint-disable-next-line react-hooks-js/set-state-in-effect -- resets loading/error state as the effect starts a fetch or subscription
+      setLocationError("This browser doesn't support location — try a different device.");
+      return;
+    }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        lastPositionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setLocationError(null);
+      },
+      () => setLocationError("Location access denied — turn on location sharing to receive ride requests."),
+      { enableHighAccuracy: mode === "active", maximumAge: mode === "active" ? 5000 : 15000 }
+    );
+    return () => {
+      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+    };
+  }, [online, zoneId, mode]);
+
+  return { connected, offer, locationError, clearOffer, mode };
 }

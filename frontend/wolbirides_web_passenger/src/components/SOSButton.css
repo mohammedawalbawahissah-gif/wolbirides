@@ -1,0 +1,53 @@
+.sos-trigger {
+  width: 100%;
+  margin-top: var(--space-4);
+  padding: 12px;
+  border: 2px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.sos-trigger:hover { background: var(--danger); color: white; }
+.sos-trigger:focus-visible { outline: 3px solid var(--danger); outline-offset: 2px; }
+
+.sos-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(22, 35, 63, 0.55);
+  padding: var(--space-4);
+}
+.sos-sheet {
+  width: 100%;
+  max-width: 420px;
+  background: var(--paper-raised);
+  border-top: 6px solid var(--danger);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-lg);
+}
+.sos-sheet h2 { margin: 0; font-size: 20px; color: var(--danger); }
+.sos-sheet p { margin: 0; color: var(--ink); line-height: 1.5; }
+.sos-error { color: var(--danger) !important; font-weight: 600; }
+.sos-sheet a.btn { text-align: center; text-decoration: none; }
+.sos-cancel {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: var(--space-2);
+  font-size: 14px;
+}
+@media (min-width: 640px) {
+  .sos-overlay { align-items: center; }
+}

@@ -244,3 +244,14 @@ table.data-table {
 @media (max-width: 720px) {
   .zone-form-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.sos-alert-banner {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-left: 5px solid var(--danger);
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.sos-row td { background: var(--danger-bg); }
+.sos-map { margin-bottom: 16px; border-radius: 10px; overflow: hidden; border: 2px solid var(--danger); }

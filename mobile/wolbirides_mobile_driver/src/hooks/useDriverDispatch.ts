@@ -1,10 +1,17 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getAccessToken } from "../tokenStore";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WS_BASE_URL, type RideOffer } from "../api/client";
 
-const PING_INTERVAL_MS = 5000;
+// The server says how hard to track (see backend trips/consumers.py): precise and
+// frequent while heading to or carrying a rider; lighter while waiting for work,
+// which is most of a shift and the biggest battery cost on budget Android phones.
+type TrackingMode = "active" | "idle";
+const TRACKING: Record<TrackingMode, { accuracy: Location.Accuracy; timeInterval: number; distanceInterval: number }> = {
+  active: { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 0 },
+  idle: { accuracy: Location.Accuracy.Balanced, timeInterval: 15000, distanceInterval: 25 },
+};
 const LOCATION_TASK_NAME = "wolbirides-driver-location-task";
 
 /**
@@ -31,60 +38,52 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   }
 });
 
-export function useDriverDispatch(zoneId: string | null, online: boolean) {
+export function useDriverDispatch(zoneId: string | null, online: boolean, onForcedOffline?: (reason: string) => void) {
   const [connected, setConnected] = useState(false);
   const [offer, setOffer] = useState<RideOffer | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [backgroundModeActive, setBackgroundModeActive] = useState(false);
+  const [mode, setMode] = useState<TrackingMode>("idle");
 
   const wsRef = useRef<WebSocket | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryRef = useRef(0);
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const foregroundSubRef = useRef<Location.LocationSubscription | null>(null);
+  const modeRef = useRef<TrackingMode>("idle");
+  const forcedOfflineRef = useRef(onForcedOffline);
+  useEffect(() => {
+    forcedOfflineRef.current = onForcedOffline;
+  }, [onForcedOffline]);
 
   const clearOffer = useCallback(() => setOffer(null), []);
 
+  // --- GPS: restarted only when online state or tracking mode changes (never the socket) ---
   useEffect(() => {
-    if (!online || !zoneId) {
-      wsRef.current?.close();
-      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      foregroundSubRef.current?.remove();
-      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
-        .then(async (started) => { if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME); })
-        .catch(() => {});
-      latestLocationHandler = null;
-      setConnected(false);
-      setBackgroundModeActive(false);
-      return;
-    }
-
-    let cancelled = false;
-    let retryTimeout: ReturnType<typeof setTimeout>;
-
+    if (!online || !zoneId) return;
+    let stopped = false;
+    const settings = TRACKING[mode];
     latestLocationHandler = (loc) => {
       lastPositionRef.current = loc;
     };
 
-    async function startLocationTracking() {
+    (async () => {
       const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+      if (stopped) return;
       if (fgStatus !== "granted") {
         setLocationError("Location permission denied — turn it on to receive ride requests.");
         return;
       }
-
-      // Try background permission + background task registration first
-      // (this is what makes location keep flowing while the app is
-      // minimized). Falls back to foreground-only watching if unavailable
-      // — either because the user declined "Always" permission, or
-      // because we're running in Expo Go, which doesn't support this API.
+      // Background tracking first (keeps flowing when the app is minimised); falls back to
+      // foreground-only if "Always" permission is declined or we're in Expo Go.
       try {
         const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-        if (bgStatus === "granted") {
+        if (bgStatus === "granted" && !stopped) {
+          if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)) {
+            await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+          }
           await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-            accuracy: Location.Accuracy.High,
-            timeInterval: PING_INTERVAL_MS,
-            distanceInterval: 0,
+            ...settings,
             showsBackgroundLocationIndicator: true,
             foregroundService: {
               notificationTitle: "WolbiRides Driver",
@@ -96,26 +95,55 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
           return;
         }
       } catch {
-        // Background location unavailable (e.g. running in Expo Go) — fall
-        // through to foreground-only tracking below.
+        // Background location unavailable: fall through to foreground-only tracking.
       }
-
+      if (stopped) return;
       setBackgroundModeActive(false);
       setLocationError(
         "Background location isn't available — location will pause if you leave this app. Keep it open while online."
       );
-      foregroundSubRef.current = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: PING_INTERVAL_MS, distanceInterval: 0 },
-        (loc) => {
-          lastPositionRef.current = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-        }
-      );
+      foregroundSubRef.current?.remove();
+      foregroundSubRef.current = await Location.watchPositionAsync(settings, (loc) => {
+        lastPositionRef.current = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      });
+    })();
+
+    return () => {
+      stopped = true;
+      foregroundSubRef.current?.remove();
+      foregroundSubRef.current = null;
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
+        .then(async (started) => { if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME); })
+        .catch(() => {});
+      latestLocationHandler = null;
+    };
+  }, [online, zoneId, mode]);
+
+  // --- Socket: pings, offers, and server instructions ---
+  useEffect(() => {
+    if (!online || !zoneId) {
+      wsRef.current?.close();
+      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+      setConnected(false);
+      setBackgroundModeActive(false);
+      return;
     }
 
-    startLocationTracking();
+    let cancelled = false;
+    let retryTimeout: ReturnType<typeof setTimeout>;
+
+    function startPinging(ws: WebSocket) {
+      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = setInterval(() => {
+        const pos = lastPositionRef.current;
+        if (pos && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "location.ping", lat: pos.lat, lng: pos.lng, zone_id: zoneId }));
+        }
+      }, TRACKING[modeRef.current].timeInterval);
+    }
 
     function connect() {
-      AsyncStorage.getItem("wolbirides_driver_access").then((token) => {
+      getAccessToken().then((token) => {
         if (cancelled) return;
         const ws = new WebSocket(`${WS_BASE_URL}/ws/driver/location/?token=${token}`);
         wsRef.current = ws;
@@ -124,12 +152,7 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
           if (cancelled) return;
           setConnected(true);
           retryRef.current = 0;
-          pingIntervalRef.current = setInterval(() => {
-            const pos = lastPositionRef.current;
-            if (pos && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "location.ping", lat: pos.lat, lng: pos.lng, zone_id: zoneId }));
-            }
-          }, PING_INTERVAL_MS);
+          startPinging(ws);
         };
 
         ws.onmessage = (event) => {
@@ -140,6 +163,16 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
               setOffer(msg.trip);
             } else if (msg.type === "trip_cancelled") {
               setOffer(null);
+            } else if (msg.type === "tracking_mode" && (msg.mode === "active" || msg.mode === "idle")) {
+              if (msg.mode !== modeRef.current) {
+                modeRef.current = msg.mode;
+                setMode(msg.mode); // restarts GPS with the matching settings
+                startPinging(ws);
+              }
+            } else if (msg.type === "force_offline") {
+              // Suspended, rejected or switched offline elsewhere: the screen reloads the driver.
+              setOffer(null);
+              forcedOfflineRef.current?.(msg.reason ?? "offline");
             }
           } catch {
             // ignore malformed frames
@@ -164,14 +197,9 @@ export function useDriverDispatch(zoneId: string | null, online: boolean) {
       cancelled = true;
       clearTimeout(retryTimeout);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      foregroundSubRef.current?.remove();
-      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)
-        .then(async (started) => { if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME); })
-        .catch(() => {});
-      latestLocationHandler = null;
       wsRef.current?.close();
     };
   }, [online, zoneId]);
 
-  return { connected, offer, locationError, backgroundModeActive, clearOffer };
+  return { connected, offer, locationError, backgroundModeActive, clearOffer, mode };
 }

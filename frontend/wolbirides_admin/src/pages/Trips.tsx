@@ -41,6 +41,7 @@ export default function Trips() {
       .catch(() => setError("Couldn't load trips."));
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- filters apply when the user presses Filter, not on every keystroke
   useEffect(load, [statusFilter]);
 
   function handleSearchSubmit(e: FormEvent) {

@@ -8,7 +8,9 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   updateName: (name: string) => Promise<void>;
   updateProfilePhoto: (url: string) => Promise<void>;
+  updateProfile: (fields: Partial<WolbiUser>) => Promise<void>;
   logout: () => void;
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,6 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data);
   }
 
+  async function updateProfile(fields: Partial<WolbiUser>) {
+    const { data } = await api.patch("/passengers/me", fields);
+    localStorage.setItem("wolbirides_user", JSON.stringify(data));
+    setUser(data);
+  }
+
+  async function resetPassword(email: string, code: string, newPassword: string) {
+    const { data } = await api.post("/auth/password/reset/confirm", { email, code, new_password: newPassword });
+    storeSession(data);
+    setUser(data.user);
+  }
+
   function logout() {
     localStorage.removeItem("wolbirides_access");
     localStorage.removeItem("wolbirides_refresh");
@@ -65,13 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, requestSignupCode, signup, login, updateName, updateProfilePhoto, logout }}
+      value={{ user, requestSignupCode, signup, login, updateName, updateProfilePhoto, updateProfile, logout, resetPassword }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
 
+// eslint-disable-next-line react/only-export-components -- exports this module's hook/helpers next to its component (standard pattern); only affects dev hot-reload
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");

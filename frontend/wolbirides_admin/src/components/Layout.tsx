@@ -1,20 +1,38 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import AssistantPanel from "./AssistantPanel";
 import NotificationBell from "./NotificationBell";
 import "./Layout.css";
 
 const NAV_ITEMS = [
-  { to: "/", label: "Overview", end: true },
+  { to: "/", label: "Overview", end: true, support: true },
   { to: "/drivers", label: "Drivers" },
-  { to: "/trips", label: "Trips" },
-  { to: "/incidents", label: "Incidents" },
-  { to: "/support", label: "Support" },
+  { to: "/trips", label: "Trips", support: true },
+  { to: "/incidents", label: "Incidents", support: true },
+  { to: "/payouts", label: "Payouts" },
+  { to: "/organizations", label: "Organizations" },
+  { to: "/bundles", label: "Bundles" },
+  { to: "/partners", label: "Partners" },
+  { to: "/placements", label: "Placements" },
+  { to: "/fairness", label: "Fairness" },
+  { to: "/trust", label: "Trust" },
+  { to: "/support", label: "Support", support: true },
   { to: "/zones", label: "Zones" },
 ];
 
+// Support staff get the day-to-day operations pages (the backend enforces the same split:
+// core.permissions.IsStaffRole vs IsAdminRole). Money and configuration are admin-only.
+const SUPPORT_PATHS = NAV_ITEMS.filter((i) => i.support).map((i) => i.to);
+
 export default function Layout() {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const isAdmin = user?.role === "admin";
+  const items = isAdmin ? NAV_ITEMS : NAV_ITEMS.filter((i) => i.support);
+
+  if (!isAdmin && !SUPPORT_PATHS.includes(location.pathname)) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="shell">
@@ -27,7 +45,7 @@ export default function Layout() {
           </div>
         </div>
         <nav className="nav">
-          {NAV_ITEMS.map((item) => (
+          {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

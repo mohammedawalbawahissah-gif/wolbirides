@@ -46,6 +46,7 @@ class DriverSerializer(serializers.ModelSerializer):
         fields = [
             "id", "licence_number", "licence_expiry", "verification_status",
             "quality_score", "is_online", "current_zone", "vehicles",
+            "offers_quiet_ride", "has_luggage_space", "accessibility_trained", "accepts_deliveries",
         ]
         read_only_fields = ["id", "verification_status", "quality_score"]
 

@@ -8,6 +8,7 @@ import ActiveTrip from "./pages/ActiveTrip";
 import Earnings from "./pages/Earnings";
 import Home from "./pages/Home";
 import Profile from "./pages/Profile";
+import ForgotPassword from "./pages/ForgotPassword";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Trips from "./pages/Trips";
@@ -20,6 +21,7 @@ export default function App() {
         <Routes>
           <Route path="/signin" element={<SignIn />} />
           <Route path="/signup" element={<SignUp />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/login" element={<Navigate to="/signin" replace />} />
 
           <Route
@@ -36,16 +38,9 @@ export default function App() {
               <Route path="earnings" element={<Earnings />} />
               <Route path="profile" element={<Profile />} />
             </Route>
+            {/* Inside the gate (so dispatch keeps running) but outside the tab layout (full-screen trip view). */}
+            <Route path="active-trip/:tripId" element={<ActiveTrip />} />
           </Route>
-
-          <Route
-            path="/active-trip/:tripId"
-            element={
-              <RequireAuth>
-                <ActiveTrip />
-              </RequireAuth>
-            }
-          />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

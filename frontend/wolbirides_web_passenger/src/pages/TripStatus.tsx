@@ -5,6 +5,10 @@ import { useTripSocket } from "../hooks/useTripSocket";
 import DriverCard from "../components/DriverCard";
 import RideStepper from "../components/RideStepper";
 import SearchingRadar from "../components/SearchingRadar";
+import SOSButton from "../components/SOSButton";
+import PaymentStep from "../components/PaymentStep";
+import SupportCard from "../components/SupportCard";
+import { CheckInPrompt, PostTripCheckin, PreferenceDecision, ShareTripButton } from "../components/TripSafety";
 import TripMap from "../components/TripMap";
 import { TripStatusSkeleton } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
@@ -45,6 +49,7 @@ export default function TripStatus() {
   useEffect(load, [tripId]);
   useEffect(() => {
     if (lastMessage) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load() only reads tripId, which is listed
   }, [lastMessage]);
 
   // Fire a toast whenever the trip crosses into a new status — key moments
@@ -60,7 +65,9 @@ export default function TripStatus() {
       if (trip.status === "cancelled") toast.show("This trip was cancelled.", "error");
       if (trip.status === "no_drivers_found") toast.show("No drivers were available nearby.", "error");
     }
+    // eslint-disable-next-line react-hooks-js/set-state-in-effect -- resets loading/error state as the effect starts a fetch or subscription
     setLastStatus(trip.status);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toast only when the status changes, not on every trip update
   }, [trip?.status]);
 
   async function cancelTrip() {
@@ -125,6 +132,11 @@ export default function TripStatus() {
                 <div className="trip-status-detail">{STATUS_COPY[trip.status].detail}</div>
               </div>
 
+              {trip.status === "in_progress" && <CheckInPrompt tripId={trip.id} refreshKey={lastMessage} />}
+              {trip.status === "matching" && (
+                <PreferenceDecision tripId={trip.id} status={trip.preference_status} onDecided={load} />
+              )}
+
               {showRadar && <SearchingRadar />}
 
               {trip.driver_detail && (trip.status === "matched" || trip.status === "driver_arriving" || trip.status === "in_progress") && (
@@ -157,7 +169,13 @@ export default function TripStatus() {
                 </div>
               )}
 
-              {trip.status === "completed" && !ratingSubmitted && (
+              {trip.status === "completed" && ["cash", "momo", undefined].includes(trip.payment_method) && (
+                <PaymentStep tripId={trip.id} fare={trip.fare_final || trip.fare_quote?.total || ""} />
+              )}
+
+              {trip.status === "completed" && <PostTripCheckin tripId={trip.id} />}
+
+              {trip.status === "completed" && !ratingSubmitted && !trip.rated_by_me && (
                 <div className="card rating-card">
                   <div className="rating-title">How was your ride?</div>
                   <div className="rating-stars">
@@ -190,18 +208,81 @@ export default function TripStatus() {
                 <h2 className="side-card-title">Trip details</h2>
                 <div className="trip-route-row"><span className="trip-dot trip-dot-pickup" /> {trip.pickup_label || "Pickup"}</div>
                 <div className="trip-route-row"><span className="trip-dot trip-dot-dest" /> {trip.destination_label || "Destination"}</div>
+                {trip.shareable && (
+                  <div className="delivery-box">
+                    <strong>Shared ride</strong>
+                    {trip.pool_info && trip.pool_info.rider_count > 1
+                      ? <span>You're sharing with one other rider going your way, and splitting the base fare.</span>
+                      : <span>If someone nearby is going your way, you'll share and pay less. Otherwise you pay the normal fare.</span>}
+                  </div>
+                )}
+                {trip.delivery && (
+                  <div className="delivery-box">
+                    <div><strong>Package:</strong> {trip.delivery.package_description} ({trip.delivery.package_size})</div>
+                    <div><strong>To:</strong> {trip.delivery.recipient_name} ({trip.delivery.recipient_phone})</div>
+                    {trip.delivery.pickup_code && !trip.delivery.picked_up_at && (
+                      <div className="delivery-code">
+                        Pickup code <strong>{trip.delivery.pickup_code}</strong>
+                        <span>Show this to the driver when they collect the package.</span>
+                      </div>
+                    )}
+                    {trip.delivery.dropoff_code && trip.status !== "completed" && (
+                      <div className="delivery-code">
+                        Drop-off code <strong>{trip.delivery.dropoff_code}</strong>
+                        <span>We've texted it to {trip.delivery.recipient_name}. The driver needs it to finish.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {trip.fare_quote && Number(trip.fare_quote.discount ?? 0) > 0 && (
+                  <div className="trip-fare-row trip-fare-sub">
+                    <span>{trip.fare_quote.discount_reason || "Discount"}</span>
+                    <span>−GH₵{trip.fare_quote.discount}</span>
+                  </div>
+                )}
+                <div className="trip-fare-row trip-fare-sub">
+                  <span>Paying with</span>
+                  <span>
+                    {trip.payment_method === "organization" ? trip.organization_name
+                      : trip.payment_method === "voucher" ? `Voucher from ${trip.organization_name}`
+                      : trip.payment_method === "bundle" ? "Ride bundle"
+                      : trip.payment_method === "momo" ? "Mobile Money" : "Cash to driver"}
+                  </span>
+                </div>
                 <div className="trip-fare-row">
                   <span>Fare</span>
                   <strong>
-                    {trip.fare_final ? `GH₵${trip.fare_final}` : trip.fare_quote ? `GH₵${trip.fare_quote.total} est.` : "—"}
+                    {trip.fare_final ? `GH₵${trip.fare_final}`
+                      : trip.pool_seat_fare ? `GH₵${trip.pool_seat_fare} (shared)`
+                      : trip.fare_quote ? `GH₵${trip.fare_quote.total} est.` : "—"}
                   </strong>
                 </div>
+
+                {trip.fare_quote && (
+                  <button className="btn btn-ghost btn-block" style={{ marginTop: 12 }}
+                    onClick={() => window.dispatchEvent(new CustomEvent("wolbirides:ask-assistant", { detail: {
+                      tripId: trip.id, label: `${trip.pickup_label || "Pickup"} to ${trip.destination_label || "destination"}`,
+                      message: "Can you explain how this trip's fare was worked out?" } }))}>
+                    Ask about this fare
+                  </button>
+                )}
+                {["completed", "cancelled", "no_drivers_found"].includes(trip.status) && (
+                  <details className="trip-help">
+                    <summary>Report a problem with this trip</summary>
+                    <SupportCard tripId={trip.id} compact />
+                  </details>
+                )}
 
                 {["requested", "matching", "matched", "driver_arriving"].includes(trip.status) && (
                   <button className="btn btn-danger-ghost btn-block" disabled={cancelling} onClick={cancelTrip} style={{ marginTop: 16 }}>
                     {cancelling ? "Cancelling…" : "Cancel ride"}
                   </button>
                 )}
+
+                {["matching", "matched", "driver_arriving", "in_progress"].includes(trip.status) && (
+                  <ShareTripButton tripId={trip.id} />
+                )}
+                {["matched", "driver_arriving", "in_progress"].includes(trip.status) && <SOSButton tripId={trip.id} />}
               </div>
             </aside>
           </div>

@@ -1,3 +1,8 @@
+import SOSButton from "../components/SOSButton";
+import DriverPaymentPanel from "../components/DriverPaymentPanel";
+import PostTripCheckin from "../components/PostTripCheckin";
+import RateRider from "../components/RateRider";
+import SupportCard from "../components/SupportCard";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Trip } from "../api/client";
@@ -26,39 +31,39 @@ export default function ActiveTrip() {
   }
 
   useEffect(load, [tripId]);
+  // WR-17: while a shared ride is still open, new riders can join; refresh to show them.
+  useEffect(() => {
+    if (!trip?.pool_info?.open) return;
+    const id = window.setInterval(load, 15000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip?.pool_info?.open, tripId]);
   useEffect(() => {
     if (lastMessage) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load() only reads tripId, which is listed
   }, [lastMessage]);
 
   useEffect(() => {
-    if (trip && (trip.status === "completed" || trip.status === "cancelled")) {
+    if (trip && trip.status === "cancelled") {
       navigate("/", { replace: true });
     }
   }, [trip, navigate]);
 
-  async function startTrip() {
-    if (!tripId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post(`/trips/${tripId}/start`);
-      load();
-    } catch {
-      setError("Couldn't start the trip.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [code, setCode] = useState("");
+  const isDelivery = trip?.trip_type === "delivery";
 
-  async function completeTrip() {
+  // Rides: start/complete. Deliveries (WR-23): confirm pickup with the sender's code,
+  // confirm drop-off with the recipient's code. Neither code is ever sent to the driver's app.
+  async function act(path: "start" | "complete" | "confirm-pickup" | "confirm-dropoff") {
     if (!tripId) return;
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/trips/${tripId}/complete`);
-      navigate("/", { replace: true });
-    } catch {
-      setError("Couldn't complete the trip.");
+      await api.post(`/trips/${tripId}/${path}`, path.startsWith("confirm") ? { code: code.trim() } : {});
+      setCode("");
+      load(); // after completion, stay: the payment panel says whether to collect cash
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "That didn't work. Try again.");
     } finally {
       setBusy(false);
     }
@@ -116,24 +121,76 @@ export default function ActiveTrip() {
             </div>
 
             <aside className="active-trip-side">
+              {trip.pool_info?.stops && trip.pool_info.stops.length > 2 && (
+                <div className="card" style={{ marginBottom: 16, borderLeft: "4px solid var(--gold)" }}>
+                  <h2 className="side-card-title">Shared ride: {trip.pool_info.rider_count} riders, in this order</h2>
+                  <ol style={{ margin: 0, paddingLeft: 20 }}>
+                    {trip.pool_info.stops.map((stop, idx) => (
+                      <li key={`${stop.type}-${stop.trip_id}`} style={{ padding: "6px 0",
+                        color: stop.done ? "var(--ink-muted)" : "inherit", textDecoration: stop.done ? "line-through" : "none" }}>
+                        <Link to={`/active-trip/${stop.trip_id}`} style={{ color: "inherit",
+                          fontWeight: stop.trip_id === trip.id && !stop.done ? 700 : 400 }}>
+                          {stop.type === "pickup" ? "Pick up" : "Drop off"} {stop.first_name}
+                        </Link>
+                        <span style={{ display: "block", fontSize: 12.5, color: "var(--ink-muted)" }}>
+                          {stop.label || (stop.type === "pickup" ? "Pickup point" : "Destination")}
+                          {idx === 0 && !stop.done ? " · next" : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
               <div className="card">
                 <h2 className="side-card-title">Trip details</h2>
                 <div className="trip-route-row"><span className="trip-dot trip-dot-pickup" /> {trip.pickup_label || "Pickup"}</div>
                 <div className="trip-route-row"><span className="trip-dot trip-dot-dest" /> {trip.destination_label || "Destination"}</div>
+                {trip.delivery && (
+                  <div style={{ margin: "12px 0", padding: 12, borderRadius: 8, background: "var(--warning-bg)", fontSize: 13.5 }}>
+                    <div><strong>Package:</strong> {trip.delivery.package_description} ({trip.delivery.package_size})</div>
+                    <div><strong>Deliver to:</strong> {trip.delivery.recipient_name}{" "}
+                      <a href={`tel:${trip.delivery.recipient_phone}`}>{trip.delivery.recipient_phone}</a></div>
+                  </div>
+                )}
                 <div className="trip-fare-row">
                   <span>Fare</span>
-                  <strong>{trip.fare_quote ? `GH₵${trip.fare_quote.total}` : "—"}</strong>
+                  <strong>{trip.fare_final ? `GH₵${trip.fare_final}` : trip.pool_seat_fare ? `GH₵${trip.pool_seat_fare}`
+                    : trip.fare_quote ? `GH₵${trip.fare_quote.total}` : "—"}</strong>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--ink-muted)" }}>
+                  {trip.payment_method === "cash" || !trip.payment_method
+                    ? "Collect cash from the passenger"
+                    : "Already paid. Don't collect cash; it's in your weekly payout."}
                 </div>
 
                 <div className="active-trip-actions">
-                  {(trip.status === "matched" || trip.status === "driver_arriving") && (
-                    <button className="btn btn-gold btn-block" disabled={busy} onClick={startTrip}>
-                      {busy ? "Starting…" : "Start trip (arrived at pickup)"}
+                  {(trip.status === "matched" || trip.status === "driver_arriving") && !isDelivery && (
+                    <button className="btn btn-gold btn-block" disabled={busy} onClick={() => act("start")}>
+                      {busy ? "Starting…" : "Start trip (rider on board)"}
                     </button>
                   )}
-
-                  {trip.status === "in_progress" && (
-                    <button className="btn btn-success btn-block" disabled={busy} onClick={completeTrip}>
+                  {(trip.status === "matched" || trip.status === "driver_arriving") && isDelivery && (
+                    <>
+                      <label className="field-label" htmlFor="pcode">Sender's 4-digit pickup code</label>
+                      <input id="pcode" className="field-input" inputMode="numeric" maxLength={4} value={code}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+                      <button className="btn btn-gold btn-block" disabled={busy || code.length !== 4} onClick={() => act("confirm-pickup")}>
+                        {busy ? "Confirming…" : "Confirm pickup"}
+                      </button>
+                    </>
+                  )}
+                  {trip.status === "in_progress" && isDelivery && (
+                    <>
+                      <label className="field-label" htmlFor="dcode">Recipient's 4-digit code</label>
+                      <input id="dcode" className="field-input" inputMode="numeric" maxLength={4} value={code}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+                      <button className="btn btn-success btn-block" disabled={busy || code.length !== 4} onClick={() => act("confirm-dropoff")}>
+                        {busy ? "Confirming…" : "Confirm drop-off"}
+                      </button>
+                    </>
+                  )}
+                  {trip.status === "in_progress" && !isDelivery && (
+                    <button className="btn btn-success btn-block" disabled={busy} onClick={() => act("complete")}>
                       {busy ? "Completing…" : "Complete trip"}
                     </button>
                   )}
@@ -141,6 +198,20 @@ export default function ActiveTrip() {
                   <button className="btn btn-danger-ghost btn-block" disabled={busy} onClick={cancelTrip}>
                     Cancel trip
                   </button>
+
+                  {["matched", "driver_arriving", "in_progress"].includes(trip.status) && <SOSButton tripId={trip.id} />}
+                {trip.status === "completed" && <RateRider tripId={trip.id} alreadyRated={trip.rated_by_me} />}
+                {trip.status === "completed" && <PostTripCheckin tripId={trip.id} />}
+                {trip.status === "completed" && (
+                  <details style={{ marginTop: 12 }}>
+                    <summary style={{ cursor: "pointer", color: "var(--ink-muted)", fontSize: 14 }}>Report a problem with this trip</summary>
+                    <SupportCard tripId={trip.id} compact />
+                  </details>
+                )}
+                {trip.status === "completed" && (
+                  <DriverPaymentPanel tripId={trip.id} fare={trip.fare_final || trip.fare_quote?.total || ""}
+                    paymentMethod={trip.payment_method} onDone={() => navigate("/", { replace: true })} />
+                )}
                 </div>
               </div>
             </aside>

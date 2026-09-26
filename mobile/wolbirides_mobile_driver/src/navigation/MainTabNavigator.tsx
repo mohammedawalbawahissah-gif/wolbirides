@@ -1,5 +1,6 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
+import FloatingActions from "../components/FloatingActions";
 import DriverGate from "../components/DriverGate";
 import DriveScreen from "../screens/HomeScreen";
 import EarningsScreen from "../screens/EarningsScreen";
@@ -19,6 +20,7 @@ const ICONS: Record<keyof MainTabParamList, string> = {
 
 function TabsInner() {
   return (
+    <View style={{ flex: 1 }}>
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
@@ -33,6 +35,8 @@ function TabsInner() {
       <Tab.Screen name="Earnings" component={EarningsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
+    <FloatingActions />
+    </View>
   );
 }
 

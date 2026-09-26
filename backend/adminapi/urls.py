@@ -11,6 +11,7 @@ from adminapi.views import (
     AdminTripSearchView,
     AdminZoneDetailView,
     AdminZoneListView,
+    AdminSupportTicketUpdateView,
 )
 
 urlpatterns = [
@@ -22,6 +23,7 @@ urlpatterns = [
     path("admin/trips", AdminTripSearchView.as_view(), name="admin-trips"),
     path("admin/incidents", AdminIncidentListView.as_view(), name="admin-incidents"),
     path("admin/support/tickets", AdminSupportTicketListView.as_view(), name="admin-support-tickets"),
+    path("admin/support/tickets/<uuid:ticket_id>", AdminSupportTicketUpdateView.as_view(), name="admin-support-ticket-update"),
     path("admin/dashboard/summary", AdminDashboardSummaryView.as_view(), name="admin-dashboard-summary"),
     path("admin/dashboard/trends", AdminDashboardTrendsView.as_view(), name="admin-dashboard-trends"),
 ]

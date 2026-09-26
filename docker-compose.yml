@@ -1,0 +1,74 @@
+# Full WolbiRides stack for local testing or a single-server pilot.
+#   cp backend/.env.example backend/.env   # fill in secrets
+#   docker compose up --build
+# Passenger web: http://localhost:5174  Driver web: http://localhost:5175
+# Admin: http://localhost:5176          API + Django admin: http://localhost:8001
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: wolbirides
+      POSTGRES_USER: wolbirides
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wolbirides-dev-only}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wolbirides"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment: &backend_env
+      DATABASE_URL: postgres://wolbirides:${POSTGRES_PASSWORD:-wolbirides-dev-only}@db:5432/wolbirides
+      REDIS_URL: redis://redis:6379
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5174,http://localhost:5175,http://localhost:5176}
+    ports:
+      - "8001:8000"
+    depends_on: &backend_deps
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: celery -A wolbirides worker -l info
+    env_file: ./backend/.env
+    environment: *backend_env
+    depends_on: *backend_deps
+
+  beat:
+    # Exactly one beat process, or scheduled jobs (payouts, invoices, safety checks) run twice.
+    build: ./backend
+    command: celery -A wolbirides beat -l info --schedule /tmp/celerybeat-schedule
+    env_file: ./backend/.env
+    environment: *backend_env
+    depends_on: *backend_deps
+
+  passenger-web:
+    build: ./frontend/wolbirides_web_passenger
+    ports: ["5174:80"]
+    depends_on: [backend]
+
+  driver-web:
+    build: ./frontend/wolbirides_web_driver
+    ports: ["5175:80"]
+    depends_on: [backend]
+
+  admin-web:
+    build: ./frontend/wolbirides_admin
+    ports: ["5176:80"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:

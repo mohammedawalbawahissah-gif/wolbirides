@@ -44,6 +44,9 @@ export default function SignIn() {
         />
         <label htmlFor="password">Password</label>
         <PasswordField id="password" value={password} onChange={setPassword} autoComplete="current-password" />
+        <div style={{ textAlign: "right", margin: "-4px 0 12px", fontSize: 13.5 }}>
+          <Link to="/forgot-password">Forgot password?</Link>
+        </div>
         {error && <div className="auth-error">{error}</div>}
         <button className="btn btn-gold btn-block" type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}

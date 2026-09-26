@@ -18,6 +18,7 @@ export default function Drivers() {
   const [search, setSearch] = useState("");
 
   function load() {
+    // eslint-disable-next-line react-hooks-js/set-state-in-effect -- resets loading/error state as the effect starts a fetch or subscription
     setDrivers(null);
     const url = tab === "pending" ? "/admin/drivers/pending" : "/admin/drivers";
     const params = tab === "all" ? { status: statusFilter || undefined, search: search || undefined } : undefined;
@@ -27,6 +28,7 @@ export default function Drivers() {
       .catch(() => setError("Couldn't load drivers."));
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- search applies when the user submits, not on every keystroke
   useEffect(load, [tab, statusFilter]);
 
   async function act(driverId: string, action: "verify" | "reject" | "suspend") {

@@ -1,0 +1,21 @@
+# Local development overrides. Use together with docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# What it changes (nothing else):
+# - backend runs Django's dev server with your code mounted, so it reloads on save
+# - worker and beat run your mounted code too (restart them after editing tasks:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker beat)
+# Ports, env files, Postgres, Redis and the three web apps are exactly as in docker-compose.yml.
+services:
+  backend:
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./backend:/app
+
+  worker:
+    volumes:
+      - ./backend:/app
+
+  beat:
+    volumes:
+      - ./backend:/app

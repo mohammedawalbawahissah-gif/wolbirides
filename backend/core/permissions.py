@@ -11,3 +11,15 @@ class IsAdminRole(BasePermission):
 
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.role == "admin")
+
+
+class IsStaffRole(BasePermission):
+    """
+    Admins and support staff. For day-to-day operations support needs to act on:
+    incidents (including SOS), support tickets, trips and the overview dashboard.
+    Money and configuration (payouts, organizations, zones, drivers, partners) stay
+    IsAdminRole.
+    """
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.role in ("admin", "support"))

@@ -3,12 +3,14 @@ import { Outlet, useOutletContext } from "react-router-dom";
 import { api, type Driver } from "../api/client";
 import Apply from "../pages/Apply";
 import Pending from "../pages/Pending";
+import DispatchLayer from "./DispatchLayer";
 
 interface DriverContext {
   driver: Driver;
   setDriver: (d: Driver) => void;
 }
 
+// eslint-disable-next-line react/only-export-components -- exports this module's hook/helpers next to its component (standard pattern); only affects dev hot-reload
 export function useDriverContext() {
   return useOutletContext<DriverContext>();
 }
@@ -41,5 +43,9 @@ export default function DriverGate() {
     return <Pending licenceNumber={driver.licence_number} />;
   }
 
-  return <Outlet context={{ driver, setDriver: setDriver } satisfies DriverContext} />;
+  return (
+    <DispatchLayer driver={driver} onDriverChanged={load}>
+      <Outlet context={{ driver, setDriver: setDriver } satisfies DriverContext} />
+    </DispatchLayer>
+  );
 }

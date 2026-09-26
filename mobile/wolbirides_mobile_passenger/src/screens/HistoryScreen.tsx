@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { api, type Trip } from "../api/client";
+import { useTripHistory } from "../hooks/useTripHistory";
 import { Badge, EmptyState } from "../components/ui";
 import { colors, spacing, typography } from "../theme";
 import type { MainTabScreenProps } from "../navigation/types";
@@ -16,11 +15,7 @@ function formatTime(iso: string) {
 }
 
 export default function HistoryScreen({ navigation }: MainTabScreenProps<"History">) {
-  const [trips, setTrips] = useState<Trip[] | null>(null);
-
-  useEffect(() => {
-    api.get<Trip[]>("/passengers/me/rides").then(({ data }) => setTrips(data));
-  }, []);
+  const { trips, hasMore, loadingMore, loadMore } = useTripHistory("/passengers/me/rides");
 
   return (
     <View style={styles.screen}>
@@ -33,6 +28,14 @@ export default function HistoryScreen({ navigation }: MainTabScreenProps<"Histor
       {trips && trips.length === 0 && <EmptyState message="No rides yet — your first trip will show up here." />}
 
       <FlatList
+        ListFooterComponent={hasMore ? (
+          <TouchableOpacity onPress={loadMore} disabled={loadingMore} accessibilityRole="button"
+            style={{ alignItems: "center", paddingVertical: 16 }}>
+            <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>
+              {loadingMore ? "Loading…" : "Load older trips"}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         data={trips ?? []}
         keyExtractor={(t) => t.id}
         contentContainerStyle={styles.listContent}
@@ -48,9 +51,20 @@ export default function HistoryScreen({ navigation }: MainTabScreenProps<"Histor
             <Text style={styles.route}>
               {item.pickup_label || "Pickup"} → {item.destination_label || "Destination"}
             </Text>
-            <Text style={styles.fare}>
-              {item.fare_final ? `GH₵${item.fare_final}` : item.fare_quote ? `GH₵${item.fare_quote.total}` : "—"}
-            </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={styles.fare}>
+                {item.fare_final ? `GH₵${item.fare_final}` : item.fare_quote ? `GH₵${item.fare_quote.total}` : "—"}
+              </Text>
+              {/* WR-13: one-tap re-request. Pre-fills the route; the rider still confirms. */}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ride again"
+                onPress={() => navigation.navigate("Ride", { rebook: {
+                  pickup: { lat: Number(item.pickup_lat), lng: Number(item.pickup_lng), label: item.pickup_label },
+                  destination: { lat: Number(item.destination_lat), lng: Number(item.destination_lng), label: item.destination_label },
+                } })}
+                style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: "#C9A227" }}>
+                <Text style={{ fontWeight: "700", fontSize: 13 }}>Ride again</Text>
+              </TouchableOpacity>
+            </View>
           </TouchableOpacity>
         )}
       />

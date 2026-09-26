@@ -1,0 +1,13 @@
+.pay-card { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.pay-card p { margin: 0; font-size: 14px; line-height: 1.5; }
+.pay-title { font-weight: 700; font-size: 18px; color: var(--navy-ink); }
+.pay-error { color: var(--danger); font-size: 13.5px !important; }
+.pay-done { border-left: 4px solid var(--success); flex-direction: row; gap: 6px; align-items: baseline; }
+.pay-done strong { color: var(--success); }
+.pay-spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--gold);
+  animation: pay-spin 0.9s linear infinite;
+}
+@keyframes pay-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pay-spinner { animation: none; } }

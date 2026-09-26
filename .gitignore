@@ -17,6 +17,8 @@ ENV/
 *.db
 
 # Django
+# Celery beat state (created when beat runs outside Docker)
+celerybeat-schedule*
 *.log
 staticfiles/
 media/
@@ -69,4 +71,7 @@ htmlcov/
 *.zip
 *.7z
 *.tar
-*.giz
+*.gz
+
+# Python linter cache
+.ruff_cache/

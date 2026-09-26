@@ -59,3 +59,12 @@
 
 .offer-actions { display: flex; gap: 10px; }
 .offer-btn { flex: 1; }
+
+.offer-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.offer-tag {
+  display: inline-block; font-size: 12.5px; padding: 4px 10px; border-radius: 999px;
+  background: var(--paper); color: var(--ink); margin-bottom: 6px;
+}
+.offer-tag-delivery { background: var(--warning-bg); color: var(--warning); font-weight: 600; }
+.offer-legs { margin: 0 0 10px; padding-left: 20px; font-size: 13.5px; }
+.offer-legs li { padding: 2px 0; }

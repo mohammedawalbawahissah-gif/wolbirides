@@ -1,6 +1,12 @@
 from django.urls import path
 
 from trips.views import (
+    AdminDispatchFairnessView,
+    AdminTrustIndicatorsView,
+    DeliveryConfirmView,
+    TripPreferenceDecisionView,
+    PaymentOptionsView,
+    RidePreferenceView,
     DriverActiveTripView,
     PassengerTripHistoryView,
     TripAcceptView,
@@ -24,4 +30,11 @@ urlpatterns = [
     path("trips/<uuid:trip_id>/start", TripStartView.as_view(), name="trip-start"),
     path("trips/<uuid:trip_id>/complete", TripCompleteView.as_view(), name="trip-complete"),
     path("trips/<uuid:trip_id>/rating", TripRatingView.as_view(), name="trip-rating"),
+    path("trips/<uuid:trip_id>/preference-decision", TripPreferenceDecisionView.as_view(), name="trip-preference-decision"),
+    path("trips/<uuid:trip_id>/confirm-pickup", DeliveryConfirmView.as_view(step="pickup"), name="delivery-confirm-pickup"),
+    path("trips/<uuid:trip_id>/confirm-dropoff", DeliveryConfirmView.as_view(step="dropoff"), name="delivery-confirm-dropoff"),
+    path("passengers/me/ride-preferences", RidePreferenceView.as_view(), name="ride-preferences"),
+    path("passengers/me/payment-options", PaymentOptionsView.as_view(), name="payment-options"),
+    path("admin/trust-indicators", AdminTrustIndicatorsView.as_view(), name="admin-trust-indicators"),
+    path("admin/dispatch/fairness", AdminDispatchFairnessView.as_view(), name="admin-dispatch-fairness"),
 ]

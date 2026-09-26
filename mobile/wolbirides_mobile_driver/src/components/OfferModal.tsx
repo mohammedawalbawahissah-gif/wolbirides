@@ -41,7 +41,18 @@ export default function OfferModal({
             <View style={[styles.timerFill, { width: `${pct}%` }]} />
           </View>
 
-          <Text style={styles.title}>New ride request</Text>
+          <Text style={styles.title}>
+            {(offer.trip_type ?? offer.kind) === "delivery" ? "New delivery request"
+              : offer.pool_legs ? "Shared ride: 2 riders" : "New ride request"}
+          </Text>
+          {(offer.trip_type ?? offer.kind) === "delivery" && !!offer.package_description && (
+            <Text style={styles.tag}>Package: {offer.package_description}{offer.package_size ? ` (${offer.package_size})` : ""}</Text>
+          )}
+          {offer.pool_legs?.map((leg, i) => (
+            <Text key={`${leg.type}-${leg.trip_id}`} style={{ fontSize: 13.5, color: colors.ink, marginBottom: 2 }}>
+              {i + 1}. {leg.type === "pickup" ? "Pick up" : "Drop off"} {leg.first_name}: {leg.label || "—"}
+            </Text>
+          ))}
           <View style={styles.routeRow}>
             <View style={[styles.dot, { backgroundColor: colors.gold }]} />
             <Text style={styles.routeText}>{offer.pickup_label}</Text>
@@ -63,6 +74,7 @@ export default function OfferModal({
 }
 
 const styles = StyleSheet.create({
+  tag: { alignSelf: "flex-start", fontSize: 13, backgroundColor: colors.warningBg, color: colors.warning, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, marginBottom: 6, overflow: "hidden" },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(22, 35, 63, 0.55)",

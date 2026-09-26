@@ -1,7 +1,11 @@
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
-const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL || "ws://localhost:8000";
+// Dev: talk to Django directly. Production builds (e.g. Docker) default to the
+// same origin, where nginx proxies /api and /ws to the backend.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8001/api" : "/api");
+const WS_BASE_URL =
+  import.meta.env.VITE_WS_BASE_URL ||
+  (import.meta.env.DEV ? "ws://localhost:8001" : `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`);
 
 export { WS_BASE_URL };
 
@@ -24,8 +28,15 @@ async function refreshAccessToken(): Promise<string | null> {
   try {
     const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refresh });
     localStorage.setItem("wolbirides_driver_access", data.access);
+    // Refresh tokens rotate: keep the new one, or the next refresh would be refused.
+    if (data.refresh) localStorage.setItem("wolbirides_driver_refresh", data.refresh);
     return data.access as string;
   } catch {
+    // Another open tab may have refreshed first (rotation makes our copy stale). If it
+    // saved a newer token, use that instead of signing this tab out.
+    await new Promise((r) => setTimeout(r, 400));
+    const latest = localStorage.getItem("wolbirides_driver_refresh");
+    if (latest && latest !== refresh) return localStorage.getItem("wolbirides_driver_access");
     return null;
   }
 }
@@ -63,6 +74,34 @@ export interface WolbiUser {
   role: "passenger" | "driver" | "admin" | "support";
   otp_verified: boolean;
   profile_photo: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+}
+
+export interface SOSResult {
+  incident_id: string;
+  emergency_number: string;
+  contact_notified: boolean;
+}
+
+export interface PayoutLineItem {
+  trip_id: string;
+  fare: string;
+  commission: string;
+  net: string;
+  completed_at?: string;
+}
+
+export interface Payout {
+  id: string;
+  period_start: string;
+  period_end: string;
+  amount: string;
+  status: "pending" | "approved" | "paid" | "failed";
+  commission_rate_snapshot: string | null;
+  line_items: PayoutLineItem[];
+  failure_reason: string;
+  created_at: string;
 }
 
 export interface AppNotification {
@@ -93,6 +132,11 @@ export interface Driver {
   is_online: boolean;
   current_zone: string | null;
   vehicles: Vehicle[];
+  gender?: "" | "female" | "male";
+  offers_quiet_ride?: boolean;
+  has_luggage_space?: boolean;
+  accessibility_trained?: boolean;
+  accepts_deliveries?: boolean;
 }
 
 export interface FareQuote {
@@ -131,6 +175,21 @@ export interface Trip {
   matched_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  payment_method?: "cash" | "momo" | "organization" | "voucher" | "bundle";
+  trip_type?: "ride" | "delivery";
+  shareable?: boolean;
+  rated_by_me?: boolean;
+  pool_seat_fare?: string | null;
+  pool_info?: {
+    pool_group: string;
+    open: boolean;
+    rider_count: number;
+    stops?: { type: "pickup" | "dropoff"; trip_id: string; first_name: string; label: string; done: boolean }[];
+  } | null;
+  delivery?: {
+    recipient_name: string; recipient_phone: string; package_description: string; package_size: string;
+    picked_up_at: string | null;
+  } | null;
 }
 
 export interface ServiceZone {
@@ -155,4 +214,9 @@ export interface RideOffer {
   destination_label: string;
   fare_estimate: string;
   timeout_seconds: number;
+  kind?: "ride" | "delivery";
+  trip_type?: "ride" | "delivery";
+  package_description?: string;
+  package_size?: string;
+  pool_legs?: { type: "pickup" | "dropoff"; trip_id: string; first_name: string; label: string }[];
 }

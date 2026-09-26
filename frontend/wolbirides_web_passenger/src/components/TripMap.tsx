@@ -23,6 +23,8 @@ interface Point { lat: number; lng: number }
 
 function FitBounds({ points }: { points: Point[] }) {
   const map = useMap();
+  // Re-fit when the actual coordinates change (a new driver position), not on every re-render.
+  const pointsKey = JSON.stringify(points);
   useEffect(() => {
     if (points.length === 0) return;
     if (points.length === 1) {
@@ -30,7 +32,8 @@ function FitBounds({ points }: { points: Point[] }) {
     } else {
       map.fitBounds(points.map((p) => [p.lat, p.lng] as [number, number]), { padding: [32, 32] });
     }
-  }, [JSON.stringify(points), map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on pointsKey, the value of `points`
+  }, [pointsKey, map]);
   return null;
 }
 

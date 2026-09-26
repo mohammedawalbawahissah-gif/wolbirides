@@ -34,7 +34,29 @@ class DriverMeView(APIView):
 
     def get(self, request):
         driver = get_object_or_404(Driver, user=request.user)
-        return Response(DriverSerializer(driver).data)
+        return Response(self._with_private(driver))
+
+    @staticmethod
+    def _with_private(driver):
+        # WR-19: gender is self-reported, optional, and used only by matching. It's returned to
+        # the driver themself here and nowhere else (not in admin lists or rider views).
+        data = DriverSerializer(driver).data
+        data["gender"] = driver.gender
+        return data
+
+    def patch(self, request):
+        """WR-19/23: drivers set what they offer. Only these flags are editable here."""
+        driver = get_object_or_404(Driver, user=request.user)
+        editable = ("offers_quiet_ride", "has_luggage_space", "accessibility_trained", "accepts_deliveries")
+        for field in editable:
+            if field in request.data:
+                setattr(driver, field, bool(request.data[field]))
+        if "gender" in request.data:
+            if request.data["gender"] not in ("", "female", "male"):
+                return Response({"detail": "gender must be '', 'female' or 'male'."}, status=400)
+            driver.gender = request.data["gender"]
+        driver.save(update_fields=[*editable, "gender", "updated_at"])
+        return Response(self._with_private(driver))
 
 
 class DriverStatusView(APIView):
@@ -57,17 +79,18 @@ class DriverStatusView(APIView):
 
 
 class DriverTripHistoryView(APIView):
-    """GET /api/drivers/me/trips"""
+    """GET /api/drivers/me/trips[?before=<iso datetime>] — paged 50 at a time."""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from trips.models import Trip
         from trips.serializers import TripSerializer
 
         driver = get_object_or_404(Driver, user=request.user)
-        trips = Trip.objects.filter(driver=driver).order_by("-requested_at")[:100]
-        return Response(TripSerializer(trips, many=True).data)
+        from trips.services import history_page, trip_list_queryset
+
+        trips = history_page(trip_list_queryset(request.user).filter(driver=driver), request)
+        return Response(TripSerializer(trips, many=True, context={"request": request}).data)
 
 
 class DriverEarningsView(APIView):

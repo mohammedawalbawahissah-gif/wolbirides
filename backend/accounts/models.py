@@ -40,8 +40,14 @@ class UserManager(BaseUserManager):
         # phone is the historical USERNAME_FIELD/unique column — email-only
         # signups get a private placeholder that can't collide, can't be
         # dialed/texted, and is obviously not a real number if ever displayed.
+        # NOTE: this placeholder used to overflow phone's old max_length=20
+        # (a "email:<uuid4>" string is 42 chars) — three real accounts in
+        # production data were silently truncated/oversized under SQLite,
+        # which doesn't enforce column length, and would have hard-failed
+        # on Postgres. Fixed by widening the column (see migration) and
+        # using uuid4().hex (32 chars, no dashes) to keep this value short.
         user = self.model(
-            phone=phone or f"email:{uuid.uuid4()}",
+            phone=phone or f"email:{uuid.uuid4().hex}",
             email=self.normalize_email(email),
             name=name,
             role=role,
@@ -51,14 +57,16 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, phone, name="Admin", password=None, **extra_fields):
+    def create_superuser(self, phone, email=None, name="Admin", password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("role", User.Role.ADMIN)
         user = self._create_user(phone, name, **extra_fields)
+        if email:
+            user.email = self.normalize_email(email)
         if password:
             user.set_password(password)
-            user.save(using=self._db)
+        user.save(using=self._db)
         return user
 
 
@@ -76,12 +84,15 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         SUPPORT = "support", "Support Agent"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    phone = models.CharField(max_length=20, unique=True, db_index=True)
+    phone = models.CharField(max_length=64, unique=True, db_index=True)
     email = models.EmailField(unique=True, null=True, blank=True, db_index=True)
     name = models.CharField(max_length=150, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.PASSENGER)
     otp_verified = models.BooleanField(default=False)
     profile_photo = models.URLField(blank=True)
+    # WR-18: one trusted contact who gets an SMS if this user raises an SOS.
+    emergency_contact_name = models.CharField(max_length=150, blank=True)
+    emergency_contact_phone = models.CharField(max_length=20, blank=True)
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -91,7 +102,10 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     objects = UserManager()
 
     USERNAME_FIELD = "phone"
-    REQUIRED_FIELDS = []
+    # email is required so a superuser created via `createsuperuser` can
+    # actually sign into the admin dashboard, which authenticates by email
+    # + password (not phone) since the WR UX overhaul.
+    REQUIRED_FIELDS = ["email"]
 
     class Meta:
         indexes = [models.Index(fields=["role", "is_active"])]
@@ -125,7 +139,13 @@ class EmailOTPRequest(TimeStampedModel):
     keeps that boundary obvious in the schema.
     """
 
+    class Purpose(models.TextChoices):
+        SIGNUP = "signup", "Sign-up verification"
+        PASSWORD_RESET = "password_reset", "Password reset"
+
     email = models.EmailField(db_index=True)
+    # A sign-up code must never work as a password-reset code, or the reverse.
+    purpose = models.CharField(max_length=20, choices=Purpose.choices, default=Purpose.SIGNUP)
     code_hash = models.CharField(max_length=128)
     expires_at = models.DateTimeField()
     consumed = models.BooleanField(default=False)
@@ -143,9 +163,46 @@ class SavedAddress(TimeStampedModel):
     lat = models.DecimalField(max_digits=9, decimal_places=6)
     lng = models.DecimalField(max_digits=9, decimal_places=6)
     address_text = models.CharField(max_length=255, blank=True)
+    # WR-13: incremented whenever a trip request explicitly references this
+    # address as pickup or destination — feeds "usual places" ranking in
+    # the app without needing to guess from raw trip coordinates.
+    usage_count = models.PositiveIntegerField(default=0)
+    last_used_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class RecurringRideSchedule(TimeStampedModel):
+    """
+    WR-13: a passenger's standing ride pattern (e.g. "campus run, Mon/Wed/Fri
+    7:45am"). Deliberately reminder-only, never auto-booking — see the
+    PRD's guardrail: auto-charging or auto-requesting a ride without an
+    explicit per-trip confirmation removes real consent over a real cost.
+    """
+
+    class DayOfWeek(models.IntegerChoices):
+        MONDAY = 0, "Monday"
+        TUESDAY = 1, "Tuesday"
+        WEDNESDAY = 2, "Wednesday"
+        THURSDAY = 3, "Thursday"
+        FRIDAY = 4, "Friday"
+        SATURDAY = 5, "Saturday"
+        SUNDAY = 6, "Sunday"
+
+    passenger = models.ForeignKey(User, on_delete=models.CASCADE, related_name="recurring_ride_schedules")
+    pickup = models.ForeignKey(SavedAddress, on_delete=models.CASCADE, related_name="+")
+    destination = models.ForeignKey(SavedAddress, on_delete=models.CASCADE, related_name="+")
+    days_of_week = models.JSONField(default=list, help_text="List of DayOfWeek integers, e.g. [0, 2, 4]")
+    time_of_day = models.TimeField()
+    active = models.BooleanField(default=True)
+    last_reminded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["time_of_day"]
+
+    def __str__(self):
+        return f"{self.passenger_id}: {self.pickup.label} -> {self.destination.label} @ {self.time_of_day}"
 
 
 class StudentProfile(TimeStampedModel):

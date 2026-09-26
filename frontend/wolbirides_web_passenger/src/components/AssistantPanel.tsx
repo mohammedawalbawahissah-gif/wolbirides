@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api } from "../api/client";
+import { useNavigate } from "react-router-dom";
+import { api, type DraftTrip, type ServiceZone } from "../api/client";
 import "./AssistantPanel.css";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  draft?: DraftTrip;
 }
 
 export default function AssistantPanel({ greeting }: { greeting: string }) {
@@ -13,7 +15,50 @@ export default function AssistantPanel({ greeting }: { greeting: string }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [booking, setBooking] = useState(false);
+  // WR-15: when opened from a trip, every message carries that trip so the
+  // assistant explains its real fare breakdown rather than guessing.
+  const [tripContext, setTripContext] = useState<{ id: string; label: string } | null>(null);
+
+  useEffect(() => {
+    function onAsk(e: Event) {
+      const detail = (e as CustomEvent<{ tripId: string; label: string; message: string }>).detail;
+      setOpen(true);
+      setTripContext({ id: detail.tripId, label: detail.label });
+      sendText(detail.message, detail.tripId);
+    }
+    window.addEventListener("wolbirides:ask-assistant", onAsk);
+    return () => window.removeEventListener("wolbirides:ask-assistant", onAsk);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
   const listRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  // WR-15: the assistant only *proposes* a ride. Booking goes through the
+  // same POST /trips as the map, so fare and validation are identical.
+  async function bookDraft(draft: DraftTrip) {
+    setBooking(true);
+    setError(null);
+    try {
+      const { data: zones } = await api.get<ServiceZone[]>("/zones");
+      if (zones.length === 0) throw new Error("no zone");
+      const { data } = await api.post("/trips", {
+        zone_id: zones[0].id,
+        pickup_lat: draft.pickup_lat.toFixed(6),
+        pickup_lng: draft.pickup_lng.toFixed(6),
+        pickup_label: draft.pickup_label,
+        destination_lat: draft.destination_lat.toFixed(6),
+        destination_lng: draft.destination_lng.toFixed(6),
+        destination_label: draft.destination_label,
+      });
+      setOpen(false);
+      navigate(`/trip/${data.id}`);
+    } catch {
+      setError("Couldn't book that ride. Try again, or book from the map.");
+    } finally {
+      setBooking(false);
+    }
+  }
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
@@ -23,17 +68,21 @@ export default function AssistantPanel({ greeting }: { greeting: string }) {
     e.preventDefault();
     const text = input.trim();
     if (!text || busy) return;
-    setError(null);
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
-    setMessages(nextMessages);
     setInput("");
+    sendText(text, tripContext?.id);
+  }
+
+  async function sendText(text: string, tripId?: string) {
+    setError(null);
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
     setBusy(true);
     try {
-      const { data } = await api.post<{ reply: string }>("/assistant/chat", {
+      const { data } = await api.post<{ reply: string; draft_trip?: DraftTrip }>("/assistant/chat", {
         message: text,
-        history: messages,
+        history: messages.map(({ role, content }) => ({ role, content })),
+        ...(tripId ? { trip_id: tripId } : {}),
       });
-      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: data.reply, draft: data.draft_trip }]);
     } catch (err: any) {
       setError(err?.response?.data?.detail || "The assistant couldn't respond right now.");
     } finally {
@@ -52,11 +101,30 @@ export default function AssistantPanel({ greeting }: { greeting: string }) {
             </button>
           </div>
 
+          {tripContext && (
+            <div className="assistant-context">
+              About your trip: {tripContext.label}
+              <button onClick={() => setTripContext(null)} aria-label="Stop asking about this trip">✕</button>
+            </div>
+          )}
           <div className="assistant-messages" ref={listRef}>
             {messages.length === 0 && <div className="assistant-greeting">{greeting}</div>}
             {messages.map((m, i) => (
-              <div key={i} className={`assistant-bubble assistant-bubble-${m.role}`}>
-                {m.content}
+              <div key={i}>
+                {m.content && <div className={`assistant-bubble assistant-bubble-${m.role}`}>{m.content}</div>}
+                {m.draft && (
+                  <div className="assistant-draft">
+                    <div className="assistant-draft-route">
+                      <span className="trip-dot trip-dot-pickup" /> {m.draft.pickup_label}
+                    </div>
+                    <div className="assistant-draft-route">
+                      <span className="trip-dot trip-dot-dest" /> {m.draft.destination_label}
+                    </div>
+                    <button className="btn btn-gold btn-block" disabled={booking} onClick={() => bookDraft(m.draft!)}>
+                      {booking ? "Booking…" : "Book this ride"}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
             {busy && <div className="assistant-bubble assistant-bubble-assistant assistant-typing">···</div>}

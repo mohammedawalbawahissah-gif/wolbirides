@@ -9,14 +9,17 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["location"],
+        "UIBackgroundModes": [
+          "location"
+        ],
         "NSLocationWhenInUseUsageDescription": "WolbiRides needs your location so passengers can be matched with you and see you arriving.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "WolbiRides needs your location in the background so you keep receiving ride requests while the app isn't in the foreground."
-      }
+      },
+      "bundleIdentifier": "com.wolbi.wolbirides.driver"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#B8860B",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -28,7 +31,8 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
-      ]
+      ],
+      "package": "com.wolbi.wolbirides.driver"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,11 +45,20 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
+      ],
+      "expo-dev-client",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "WolbiRides uses your photos only when you choose one for your profile photo and the licence and vehicle documents ops verifies.",
+          "cameraPermission": "WolbiRides uses the camera only when you take a photo for your profile photo and the licence and vehicle documents ops verifies."
+        }
       ]
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost:8000/api",
-      "wsBaseUrl": "ws://localhost:8000"
+      "apiBaseUrl": "http://172.20.10.3:8001/api",
+      "wsBaseUrl": "ws://172.20.10.3:8001"
     }
   }
 }

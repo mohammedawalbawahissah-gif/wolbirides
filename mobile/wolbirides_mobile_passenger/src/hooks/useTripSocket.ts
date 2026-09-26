@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getAccessToken } from "../tokenStore";
 import { useEffect, useRef, useState } from "react";
 import { WS_BASE_URL } from "../api/client";
 
@@ -13,7 +13,7 @@ export function useTripSocket(tripId: string | null) {
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     async function connect() {
-      const token = await AsyncStorage.getItem("wolbirides_access");
+      const token = await getAccessToken();
       if (cancelled) return;
       const ws = new WebSocket(`${WS_BASE_URL}/ws/trip/${tripId}/?token=${token}`);
       wsRef.current = ws;

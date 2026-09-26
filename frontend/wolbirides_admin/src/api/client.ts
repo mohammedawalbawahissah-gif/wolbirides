@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+// Dev: talk to Django directly. Production builds (e.g. Docker) default to the
+// same origin, where nginx proxies /api and /ws to the backend.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:8001/api" : "/api");
 
 export const api = axios.create({ baseURL: BASE_URL });
 
@@ -22,8 +24,15 @@ async function refreshAccessToken(): Promise<string | null> {
   try {
     const { data } = await axios.post(`${BASE_URL}/auth/token/refresh`, { refresh });
     localStorage.setItem("wolbirides_admin_access", data.access);
+    // Refresh tokens rotate: keep the new one, or the next refresh would be refused.
+    if (data.refresh) localStorage.setItem("wolbirides_admin_refresh", data.refresh);
     return data.access as string;
   } catch {
+    // Another open tab may have refreshed first (rotation makes our copy stale). If it
+    // saved a newer token, use that instead of signing this tab out.
+    await new Promise((r) => setTimeout(r, 400));
+    const latest = localStorage.getItem("wolbirides_admin_refresh");
+    if (latest && latest !== refresh) return localStorage.getItem("wolbirides_admin_access");
     return null;
   }
 }
@@ -132,6 +141,27 @@ export interface Incident {
   status: "open" | "investigating" | "resolved";
   description: string;
   resolved_at: string | null;
+  is_sos: boolean;
+  trigger_source?: "sos_button" | "post_trip_checkin" | "overdue_checkin" | "manual_report";
+  location_lat: string | null;
+  location_lng: string | null;
+  created_at: string;
+}
+
+export interface Payout {
+  id: string;
+  driver: string;
+  driver_name: string;
+  driver_phone: string;
+  period_start: string;
+  period_end: string;
+  amount: string;
+  status: "pending" | "approved" | "paid" | "failed";
+  commission_rate_snapshot: string | null;
+  line_items: { trip_id: string; fare: string; commission: string; net: string; completed_at?: string | null }[];
+  provider_reference: string;
+  failure_reason: string;
+  retry_count: number;
   created_at: string;
 }
 
@@ -142,7 +172,9 @@ export interface SupportTicket {
   status: "open" | "in_progress" | "resolved";
   subject: string;
   description: string;
+  trip: string | null;
   assigned_to: string | null;
+  resolved_at: string | null;
   created_at: string;
 }
 

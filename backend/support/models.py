@@ -18,6 +18,8 @@ class SupportTicket(TimeStampedModel):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="support_tickets")
     category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER)
+    # Optional: the trip this is about, so ops can see the fare, route and events at once.
+    trip = models.ForeignKey("trips.Trip", on_delete=models.SET_NULL, null=True, blank=True, related_name="support_tickets")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
     subject = models.CharField(max_length=200)
     description = models.TextField(blank=True)

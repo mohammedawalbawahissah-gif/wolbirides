@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { api, type ServiceZone } from "../api/client";
 import { useDriverContext } from "../components/DriverGate";
@@ -27,9 +27,16 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // If the server takes the driver offline (suspension, or offline elsewhere), reload their profile
+  // so the screen shows the real state and pinging stops.
+  const reloadDriver = useCallback(() => {
+    api.get("/drivers/me").then(({ data }) => setDriver(data)).catch(() => {});
+  }, [setDriver]);
+
   const { connected, offer, locationError, backgroundModeActive, clearOffer } = useDriverDispatch(
     zone?.id ?? driver.current_zone,
-    driver.is_online
+    driver.verification_status === "verified" && driver.is_online,
+    reloadDriver,
   );
 
   async function toggleOnline() {

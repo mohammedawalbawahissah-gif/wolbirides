@@ -7,23 +7,42 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wolbi.wolbirides"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#16233F",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.wolbi.wolbirides"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiBaseUrl": "http://localhost:8000/api",
-      "wsBaseUrl": "ws://localhost:8000"
-    }
+      "apiBaseUrl": "http://172.20.10.3:8001/api",
+      "wsBaseUrl": "ws://172.20.10.3:8001"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "WolbiRides uses your location to set your pickup and to share where you are if you press SOS."
+        }
+      ],
+      "expo-dev-client",
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "WolbiRides uses your photos only when you choose one for your profile photo.",
+          "cameraPermission": "WolbiRides uses the camera only when you take a photo for your profile photo."
+        }
+      ]
+    ]
   }
 }

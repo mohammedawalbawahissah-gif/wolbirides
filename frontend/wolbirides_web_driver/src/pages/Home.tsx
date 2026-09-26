@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type ServiceZone } from "../api/client";
 import { useDriverContext } from "../components/DriverGate";
-import { useDriverDispatch } from "../hooks/useDriverDispatch";
-import OfferModal from "../components/OfferModal";
+import { useDispatchState } from "../components/DispatchLayer";
 import "./Home.css";
 
 export default function Home() {
@@ -29,10 +28,8 @@ export default function Home() {
     });
   }, [navigate]);
 
-  const { connected, offer, locationError, clearOffer } = useDriverDispatch(
-    zone?.id ?? driver.current_zone,
-    driver.is_online
-  );
+  // The dispatch connection lives in DispatchLayer so it keeps running on every page.
+  const { connected, locationError } = useDispatchState();
 
   async function toggleOnline() {
     if (!zone) return;
@@ -48,24 +45,6 @@ export default function Home() {
       setError(err?.response?.data?.detail || "Couldn't update your status.");
     } finally {
       setToggling(false);
-    }
-  }
-
-  async function acceptOffer(tripId: string) {
-    try {
-      await api.post(`/trips/${tripId}/accept`);
-      clearOffer();
-      navigate(`/active-trip/${tripId}`);
-    } catch {
-      clearOffer();
-    }
-  }
-
-  async function declineOffer(tripId: string) {
-    try {
-      await api.post(`/trips/${tripId}/decline`);
-    } finally {
-      clearOffer();
     }
   }
 
@@ -151,9 +130,6 @@ export default function Home() {
         </aside>
       </div>
 
-      {offer && (
-        <OfferModal offer={offer} onAccept={() => acceptOffer(offer.trip_id)} onDecline={() => declineOffer(offer.trip_id)} />
-      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { CompositeScreenProps } from "@react-navigation/native";
 export type AuthStackParamList = {
   SignIn: undefined;
   SignUp: undefined;
+  ForgotPassword: undefined;
 };
 
 export type AuthStackScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<
@@ -20,7 +21,9 @@ export type MainTabParamList = {
 };
 
 export type RootStackParamList = {
-  MainTabs: undefined;
+  MainTabs: undefined | { screen: string };
+  Notifications: undefined;
+  Assistant: { tripId?: string; label?: string; message?: string } | undefined;
   ActiveTrip: { tripId: string };
 };
 

@@ -16,6 +16,20 @@ interface TicketRow extends SupportTicket {
 export default function Support() {
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  // Moving a ticket along also notifies the person who raised it (backend AdminSupportTicketUpdateView).
+  async function setStatus(ticket: SupportTicket, status: SupportTicket["status"]) {
+    setSavingId(ticket.id);
+    try {
+      const { data } = await api.patch<SupportTicket>(`/admin/support/tickets/${ticket.id}`, { status });
+      setTickets((prev) => prev?.map((t) => (t.id === ticket.id ? data : t)) ?? prev);
+    } catch {
+      setError("Couldn't update that ticket. Try again.");
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   useEffect(() => {
     api
@@ -57,8 +71,27 @@ export default function Support() {
                 <tr key={ticket.id}>
                   <td>{formatTime(ticket.created_at)}</td>
                   <td>{ticket.category.replace(/_/g, " ")}</td>
-                  <td>{ticket.subject}</td>
-                  <td><StatusBadge status={ticket.status} /></td>
+                  <td>
+                    <strong>{ticket.subject}</strong>
+                    {ticket.description && (
+                      <div style={{ fontSize: 13, color: "var(--ink-muted)", whiteSpace: "pre-wrap", marginTop: 4 }}>
+                        {ticket.description}
+                      </div>
+                    )}
+                    {ticket.trip && (
+                      <div style={{ fontSize: 12, marginTop: 4 }}>About trip <code>{ticket.trip.slice(0, 8)}</code></div>
+                    )}
+                  </td>
+                  <td>
+                    <StatusBadge status={ticket.status} />
+                    <select aria-label={`Status of "${ticket.subject}"`} value={ticket.status} disabled={savingId === ticket.id}
+                      onChange={(e) => setStatus(ticket, e.target.value as SupportTicket["status"])}
+                      style={{ display: "block", marginTop: 6 }}>
+                      <option value="open">Open</option>
+                      <option value="in_progress">Being handled</option>
+                      <option value="resolved">Resolved</option>
+                    </select>
+                  </td>
                 </tr>
               ))}
             </tbody>

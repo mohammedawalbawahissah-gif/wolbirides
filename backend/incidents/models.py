@@ -33,6 +33,17 @@ class Incident(TimeStampedModel):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
     description = models.TextField()
     resolved_at = models.DateTimeField(null=True, blank=True)
+    # WR-18: SOS alerts are P0 incidents raised from the in-trip SOS button,
+    # carrying the reporter's last known position for ops.
+    class TriggerSource(models.TextChoices):
+        SOS_BUTTON = "sos_button", "SOS button"
+        POST_TRIP_CHECKIN = "post_trip_checkin", "Post-trip check-in"
+        OVERDUE_CHECKIN = "overdue_checkin", "Unanswered in-trip check-in"
+        MANUAL_REPORT = "manual_report", "Manual report"
+
+    trigger_source = models.CharField(max_length=20, choices=TriggerSource.choices, default=TriggerSource.MANUAL_REPORT)
+    location_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=["severity", "status"])]

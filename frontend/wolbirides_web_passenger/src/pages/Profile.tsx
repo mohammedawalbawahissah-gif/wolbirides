@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { api, type SavedAddress } from "../api/client";
 import FileDrop from "../components/FileDrop";
+import SupportCard from "../components/SupportCard";
+import { BundlesCard, NotificationPrefsCard, RecurringRidesCard, RidePreferencesCard, SafetyContactCard } from "../components/ProfileSections";
 import { useToast } from "../components/Toast";
 import "./Profile.css";
 
@@ -140,6 +142,13 @@ export default function Profile() {
           </button>
         </div>
       </div>
+
+      <RecurringRidesCard />
+      <RidePreferencesCard />
+      <BundlesCard />
+      <SafetyContactCard />
+      <NotificationPrefsCard />
+      <SupportCard />
     </div>
   );
 }

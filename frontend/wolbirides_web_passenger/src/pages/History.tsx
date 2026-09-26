@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Trip } from "../api/client";
+import { useTripHistory } from "../hooks/useTripHistory";
 import { SkeletonBlock } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import "./History.css";
@@ -16,16 +15,10 @@ function formatTime(iso: string) {
 }
 
 export default function History() {
-  const [trips, setTrips] = useState<Trip[] | null>(null);
   const navigate = useNavigate();
   const toast = useToast();
-
-  useEffect(() => {
-    api
-      .get<Trip[]>("/passengers/me/rides")
-      .then(({ data }) => setTrips(data))
-      .catch(() => toast.show("Couldn't load your ride history.", "error"));
-  }, []);
+  const { trips, hasMore, loadingMore, loadMore } = useTripHistory("/passengers/me/rides",
+    () => toast.show("Couldn't load your rides. Try again.", "error"));
 
   return (
     <div>
@@ -58,22 +51,39 @@ export default function History() {
 
       <div className="history-grid">
         {trips?.map((trip) => (
-          <button key={trip.id} className="card history-card" onClick={() => navigate(`/trip/${trip.id}`)}>
-            <div className="history-card-top">
-              <span className="history-date">{formatTime(trip.requested_at)}</span>
-              <span className={"badge " + (STATUS_TONE[trip.status] || "badge-neutral")}>
-                {trip.status.replace(/_/g, " ")}
-              </span>
-            </div>
-            <div className="history-route">
-              {trip.pickup_label || "Pickup"} → {trip.destination_label || "Destination"}
-            </div>
-            <div className="history-fare">
-              {trip.fare_final ? `GH₵${trip.fare_final}` : trip.fare_quote ? `GH₵${trip.fare_quote.total}` : "—"}
-            </div>
-          </button>
+          <div key={trip.id} className="card history-card history-card-wrap">
+            <button className="history-card-main" onClick={() => navigate(`/trip/${trip.id}`)}>
+              <div className="history-card-top">
+                <span className="history-date">{formatTime(trip.requested_at)}</span>
+                <span className={"badge " + (STATUS_TONE[trip.status] || "badge-neutral")}>
+                  {trip.status.replace(/_/g, " ")}
+                </span>
+              </div>
+              <div className="history-route">
+                {trip.pickup_label || "Pickup"} → {trip.destination_label || "Destination"}
+              </div>
+              <div className="history-fare">
+                {trip.fare_final ? `GH₵${trip.fare_final}` : trip.fare_quote ? `GH₵${trip.fare_quote.total}` : "—"}
+              </div>
+            </button>
+            {/* WR-13: one-tap re-request from any past trip. Pre-fills the route; the rider still confirms. */}
+            <button className="btn btn-ghost history-again"
+              onClick={() => navigate("/", { state: { rebook: {
+                pickup: { lat: Number(trip.pickup_lat), lng: Number(trip.pickup_lng), label: trip.pickup_label },
+                destination: { lat: Number(trip.destination_lat), lng: Number(trip.destination_lng), label: trip.destination_label },
+              } } })}>
+              Ride again
+            </button>
+          </div>
         ))}
       </div>
+      {hasMore && (
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <button className="btn btn-ghost" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Load older trips"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

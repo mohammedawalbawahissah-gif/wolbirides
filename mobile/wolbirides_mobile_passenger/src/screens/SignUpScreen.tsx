@@ -1,49 +1,53 @@
 import { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
+import { COPY } from "../appConfig";
 import { Button, ErrorBanner, FieldLabel, TextField } from "../components/ui";
-import { colors, spacing } from "../theme";
 import type { AuthStackScreenProps } from "../navigation/types";
+import { authStyles as styles } from "./SignInScreen";
+
+function firstError(data: any): string | null {
+  if (!data) return null;
+  if (typeof data.detail === "string") return data.detail;
+  const first = Object.values(data)[0];
+  return Array.isArray(first) ? String(first[0]) : null;
+}
 
 export default function SignUpScreen({ navigation }: AuthStackScreenProps<"SignUp">) {
-  const { requestOtp, verifyOtp, updateName } = useAuth();
+  const { requestSignupCode, signup } = useAuth();
   const [step, setStep] = useState<"details" | "code">("details");
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function handleRequestOtp() {
+  async function handleSendCode() {
     setError(null);
+    if (password.length < 8) {
+      setError("Use at least 8 characters for your password.");
+      return;
+    }
     setBusy(true);
     try {
-      await requestOtp(phone);
+      await requestSignupCode(email.trim().toLowerCase());
       setStep("code");
-    } catch {
-      setError("Couldn't send a code to that number. Check it and try again.");
+    } catch (err: any) {
+      setError(firstError(err?.response?.data) || "Couldn't send a code to that email. Check it and try again.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function handleVerify() {
+  async function handleCreate() {
     setError(null);
     setBusy(true);
     try {
-      await verifyOtp(phone, code);
-      if (name.trim()) await updateName(name.trim());
+      await signup(email.trim().toLowerCase(), code.trim(), password, name.trim());
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "That code didn't work. Try again.");
+      setError(firstError(err?.response?.data) || "That code didn't work. Try again.");
     } finally {
       setBusy(false);
     }
@@ -54,35 +58,35 @@ export default function SignUpScreen({ navigation }: AuthStackScreenProps<"SignU
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <View style={styles.hero}>
           <View style={styles.logoMark}><Text style={styles.logoMarkText}>WR</Text></View>
-          <Text style={styles.heroTitle}>Create your account</Text>
-          <Text style={styles.heroSubtitle}>Move around UDS with more confidence.</Text>
+          <Text style={styles.heroTitle}>{COPY.signUpTitle}</Text>
+          <Text style={styles.heroSubtitle}>{COPY.signUpSubtitle}</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.formArea} keyboardShouldPersistTaps="handled">
           {step === "details" ? (
             <>
               <FieldLabel>Full name</FieldLabel>
-              <TextField value={name} onChangeText={setName} placeholder="e.g. Ama Boateng" autoFocus />
-              <FieldLabel>Phone number</FieldLabel>
-              <TextField value={phone} onChangeText={setPhone} placeholder="+233 XX XXX XXXX" keyboardType="phone-pad" />
+              <TextField value={name} onChangeText={setName} placeholder="e.g. Amina Yakubu" autoComplete="name" />
+              <FieldLabel>Email</FieldLabel>
+              <TextField value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address"
+                autoCapitalize="none" autoComplete="email" />
+              <FieldLabel>Password</FieldLabel>
+              <TextField value={password} onChangeText={setPassword} placeholder="At least 8 characters" secureTextEntry
+                autoComplete="new-password" />
               {error && <ErrorBanner message={error} />}
-              <Button title={busy ? "Sending…" : "Send code"} onPress={handleRequestOtp} variant="primary" loading={busy} />
+              <Button title={busy ? "Sending code…" : "Send verification code"} onPress={handleSendCode}
+                variant="primary" loading={busy} disabled={!name.trim() || !email.trim() || !password} />
             </>
           ) : (
             <>
-              <FieldLabel>{`Enter the code sent to ${phone}`}</FieldLabel>
-              <TextField
-                value={code}
-                onChangeText={setCode}
-                placeholder="6-digit code"
-                keyboardType="number-pad"
-                maxLength={6}
-                autoFocus
-              />
+              <FieldLabel>{`Enter the code we emailed to ${email}`}</FieldLabel>
+              <TextField value={code} onChangeText={setCode} placeholder="6-digit code" keyboardType="number-pad"
+                maxLength={6} autoFocus />
               {error && <ErrorBanner message={error} />}
-              <Button title={busy ? "Verifying…" : "Create account"} onPress={handleVerify} variant="primary" loading={busy} />
+              <Button title={busy ? "Creating account…" : "Create account"} onPress={handleCreate} variant="primary"
+                loading={busy} disabled={code.trim().length < 4} />
               <TouchableOpacity onPress={() => { setStep("details"); setError(null); }} style={styles.backLink}>
-                <Text style={styles.backLinkText}>Edit details</Text>
+                <Text style={styles.backLinkText}>Change my details</Text>
               </TouchableOpacity>
             </>
           )}
@@ -98,28 +102,3 @@ export default function SignUpScreen({ navigation }: AuthStackScreenProps<"SignU
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.paper },
-  hero: {
-    backgroundColor: colors.navyInk,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-  },
-  logoMark: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: colors.gold,
-    alignItems: "center", justifyContent: "center", marginBottom: spacing.md,
-  },
-  logoMarkText: { color: colors.navyInk, fontWeight: "700", fontSize: 17 },
-  heroTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700", marginBottom: spacing.xs },
-  heroSubtitle: { color: "#C7CCD8", fontSize: 14.5, lineHeight: 20 },
-  formArea: { padding: spacing.lg },
-  backLink: { paddingVertical: spacing.sm },
-  backLinkText: { color: colors.inkMuted, fontSize: 13.5, textDecorationLine: "underline" },
-  switchRow: { flexDirection: "row", justifyContent: "center", marginTop: spacing.lg },
-  switchText: { fontSize: 13.5, color: colors.inkMuted },
-  switchLink: { fontSize: 13.5, color: colors.navyInk, fontWeight: "700", textDecorationLine: "underline" },
-});

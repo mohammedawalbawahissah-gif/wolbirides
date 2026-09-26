@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from core.models import AuditLog
+from core.models import AuditLog, Notification, NotificationPreference
 
 
 @admin.register(AuditLog)
@@ -17,3 +17,16 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ["title", "user", "category", "read", "created_at"]
+    list_filter = ["category", "read"]
+    search_fields = ["user__phone", "user__email", "title"]
+
+
+@admin.register(NotificationPreference)
+class NotificationPreferenceAdmin(admin.ModelAdmin):
+    list_display = ["user", "category", "enabled"]
+    list_filter = ["category", "enabled"]

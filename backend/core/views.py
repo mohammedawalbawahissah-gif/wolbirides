@@ -1,7 +1,9 @@
+from core.throttling import ActionRateThrottle
 import uuid
 
 import cloudinary.uploader
 from django.conf import settings
+from PIL import Image
 from rest_framework import serializers
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import MultiPartParser
@@ -12,7 +14,35 @@ from rest_framework.views import APIView
 from core.models import Notification
 
 ALLOWED_KINDS = {"licence_document", "vehicle_registration_document", "vehicle_photo", "profile_photo"}
+IMAGE_ONLY_KINDS = {"vehicle_photo", "profile_photo"}
+DOCUMENT_KINDS = {"licence_document", "vehicle_registration_document"}  # image or PDF
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024  # 8MB — plenty for a phone photo of a document
+
+
+def _looks_like_pdf(upload):
+    """Checks the actual file bytes, not the client-supplied filename/Content-Type
+    (both trivially spoofable) — genuine PDFs start with the %PDF- magic header."""
+    upload.seek(0)
+    header = upload.read(5)
+    upload.seek(0)
+    return header == b"%PDF-"
+
+
+def _looks_like_valid_image(upload):
+    """
+    Actually attempts to parse the file as image data via Pillow, rather than
+    trusting the extension or Content-Type header — a renamed .exe or .html
+    file with a .jpg extension will fail this, where a naive extension check
+    would have waved it through.
+    """
+    upload.seek(0)
+    try:
+        Image.open(upload).verify()
+        valid = True
+    except Exception:
+        valid = False
+    upload.seek(0)
+    return valid
 
 
 class DocumentUploadView(APIView):
@@ -43,6 +73,17 @@ class DocumentUploadView(APIView):
             return Response({"detail": "No file provided."}, status=400)
         if upload.size > MAX_UPLOAD_BYTES:
             return Response({"detail": "File is too large (max 8MB)."}, status=400)
+
+        # Validate actual file content, not just the size/kind — previously
+        # any file type was accepted as long as it was under the size limit,
+        # which meant arbitrary files (not just images/PDFs) could be stored
+        # in Cloudinary under identity-document folders.
+        if kind in IMAGE_ONLY_KINDS:
+            if not _looks_like_valid_image(upload):
+                return Response({"detail": "That doesn't look like a valid image file."}, status=400)
+        elif kind in DOCUMENT_KINDS:
+            if not (_looks_like_pdf(upload) or _looks_like_valid_image(upload)):
+                return Response({"detail": "Documents must be an image or PDF file."}, status=400)
 
         try:
             result = cloudinary.uploader.upload(
@@ -96,6 +137,45 @@ class NotificationMarkAllReadView(APIView):
         return Response({"detail": "ok"})
 
 
+class NotificationPreferencesView(APIView):
+    """
+    GET/PATCH /api/notifications/preferences — WR-16. Only ever lists
+    categories that can actually be turned off (Notification.
+    OPTIONAL_CATEGORIES) — functional categories (trip, payout, incident)
+    aren't shown here at all, since there's no toggle to show.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core.models import NotificationPreference
+
+        existing = {
+            p.category: p.enabled
+            for p in NotificationPreference.objects.filter(
+                user=request.user, category__in=Notification.OPTIONAL_CATEGORIES
+            )
+        }
+        return Response([
+            {"category": cat.value, "label": cat.label, "enabled": existing.get(cat.value, True)}
+            for cat in Notification.OPTIONAL_CATEGORIES
+        ])
+
+    def patch(self, request):
+        from core.models import NotificationPreference
+
+        updates = request.data if isinstance(request.data, list) else request.data.get("preferences", [])
+        valid_categories = {cat.value for cat in Notification.OPTIONAL_CATEGORIES}
+        for item in updates:
+            category = item.get("category")
+            if category not in valid_categories:
+                continue
+            NotificationPreference.objects.update_or_create(
+                user=request.user, category=category, defaults={"enabled": bool(item.get("enabled", True))}
+            )
+        return self.get(request)
+
+
 # --- AI Assistant (role-aware, server-side key) -------------------------
 
 ASSISTANT_SYSTEM_PROMPTS = {
@@ -103,9 +183,26 @@ ASSISTANT_SYSTEM_PROMPTS = {
         "You are the WolbiRides in-app assistant for a passenger using the "
         "UDS campus ride-hailing pilot. Help with booking a ride, understanding "
         "trip status, fares, and app features. Be brief and concrete. You "
-        "cannot see live trip data yourself — if the passenger asks about a "
-        "specific trip's status, tell them to check the trip screen or contact "
-        "support, rather than guessing."
+        "cannot see live trip data yourself unless a specific trip's details "
+        "are provided to you below — if no trip context is given and the "
+        "passenger asks about a specific trip, tell them to check the trip "
+        "screen or contact support, rather than guessing.\n\n"
+        "IMPORTANT: you can never issue, promise, or apply a refund or fare "
+        "adjustment yourself, even if a passenger's complaint seems clearly "
+        "justified — fare/refund decisions are a human support action, not "
+        "something you can do. Explain the charge as best you can from the "
+        "trip data given, and if that doesn't resolve it, tell the passenger "
+        "you're escalating to support and that they should also expect a "
+        "human follow-up.\n\n"
+        "If the passenger's message is a request to book a ride (e.g. \"book "
+        "me a ride to the library\", \"take me home\", \"usual ride to "
+        "campus\"), use the draft_ride_request tool rather than trying to "
+        "confirm the booking yourself in text. Only use it when you can "
+        "resolve both pickup and destination against the passenger's saved "
+        "places listed below (or the trip context's pickup/destination when "
+        "they say \"there again\" or similar) — if you can't confidently "
+        "resolve a place, ask a brief clarifying question instead of "
+        "guessing at coordinates."
     ),
     "driver": (
         "You are the WolbiRides in-app assistant for a founding driver on the "
@@ -122,10 +219,79 @@ ASSISTANT_SYSTEM_PROMPTS = {
 }
 ASSISTANT_SYSTEM_PROMPTS["support"] = ASSISTANT_SYSTEM_PROMPTS["admin"]
 
+# WR-15: lets the assistant draft a bookable trip rather than just describing
+# one in prose — the frontend renders a tool_use response as a confirmable
+# card. The assistant never submits a trip itself; POST /api/trips still
+# runs the same validation and server-side fare computation as any other
+# request (WR-10's fare-manipulation fix applies identically here).
+DRAFT_RIDE_TOOL = {
+    "name": "draft_ride_request",
+    "description": (
+        "Propose a ride for the passenger to review and confirm. Only call "
+        "this once you can resolve both pickup and destination to specific "
+        "coordinates from the passenger's saved places or trip context "
+        "given to you — never invent coordinates."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "pickup_label": {"type": "string"},
+            "pickup_lat": {"type": "number"},
+            "pickup_lng": {"type": "number"},
+            "destination_label": {"type": "string"},
+            "destination_lat": {"type": "number"},
+            "destination_lng": {"type": "number"},
+        },
+        "required": ["pickup_label", "pickup_lat", "pickup_lng", "destination_label", "destination_lat", "destination_lng"],
+    },
+}
+
+
+def _build_trip_context_block(trip):
+    """Plain-language fare/trip breakdown handed to the assistant as context —
+    never the raw model objects, so the model can't accidentally leak fields
+    beyond what's relevant to explaining a fare."""
+    fare = trip.fare_quote
+    lines = [
+        f"Trip status: {trip.status}",
+        f"Pickup: {trip.pickup_label or 'Pickup'}",
+        f"Destination: {trip.destination_label or 'Destination'}",
+    ]
+    if fare:
+        lines += [
+            f"Distance: {fare.distance_km} km",
+            f"Base fare: GHS {fare.base_fare}",
+            f"Per-km charge: GHS {fare.per_km_charge}",
+            f"Quoted total: GHS {fare.total}",
+        ]
+    if trip.fare_final:
+        lines.append(f"Final charged fare: GHS {trip.fare_final}")
+    if trip.cancel_reason:
+        lines.append(f"Cancellation reason: {trip.cancel_reason} (cancelled by {trip.cancelled_by})")
+    return "\n".join(lines)
+
+
+def _build_saved_places_block(user):
+    from accounts.models import SavedAddress
+
+    places = SavedAddress.objects.filter(user=user).order_by("-usage_count")[:10]
+    if not places:
+        return "The passenger has no saved places yet."
+    return "\n".join(f"- {p.label}: lat={p.lat}, lng={p.lng}" for p in places)
+
+
+class _HistoryTurnSerializer(serializers.Serializer):
+    """One earlier chat turn sent back by the app. Bounded so a client can't inflate
+    what we send to the (paid) model, or forge a system prompt."""
+
+    role = serializers.ChoiceField(choices=["user", "assistant"])
+    content = serializers.CharField(max_length=2000, allow_blank=True)
+
 
 class AssistantChatSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=2000)
-    history = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    history = serializers.ListField(child=_HistoryTurnSerializer(), required=False, default=list, max_length=10)
+    trip_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class AssistantChatView(APIView):
@@ -136,6 +302,8 @@ class AssistantChatView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ActionRateThrottle]
+    throttle_scope = "assistant"
 
     def post(self, request):
         if not settings.ANTHROPIC_API_KEY:
@@ -155,6 +323,23 @@ class AssistantChatView(APIView):
         role = getattr(request.user, "role", "passenger")
         system_prompt = ASSISTANT_SYSTEM_PROMPTS.get(role, ASSISTANT_SYSTEM_PROMPTS["passenger"])
 
+        trip = None
+        trip_id = serializer.validated_data.get("trip_id")
+        if trip_id:
+            from trips.models import Trip
+            from trips.services import user_can_access_trip
+
+            trip = Trip.objects.filter(id=trip_id).select_related("fare_quote").first()
+            if not trip or not user_can_access_trip(request.user, trip):
+                return Response({"detail": "Trip not found."}, status=404)
+            system_prompt += "\n\n--- Trip context (use this to answer, never invent figures) ---\n"
+            system_prompt += _build_trip_context_block(trip)
+
+        tools = []
+        if role == "passenger":
+            system_prompt += "\n\n--- Passenger's saved places ---\n" + _build_saved_places_block(request.user)
+            tools = [DRAFT_RIDE_TOOL]
+
         messages = list(serializer.validated_data.get("history", []))[-10:]
         messages.append({"role": "user", "content": serializer.validated_data["message"]})
 
@@ -165,9 +350,53 @@ class AssistantChatView(APIView):
                 max_tokens=500,
                 system=system_prompt,
                 messages=messages,
+                tools=tools or None,
             )
-            reply_text = "".join(block.text for block in response.content if block.type == "text")
         except Exception:
             return Response({"detail": "The assistant couldn't respond right now — try again shortly."}, status=502)
 
-        return Response({"reply": reply_text})
+        reply_text = "".join(block.text for block in response.content if block.type == "text")
+        draft_trip = None
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "draft_ride_request":
+                draft_trip = block.input
+
+        if trip_id:
+            # WR-15 guardrail: log every assistant interaction that
+            # references a specific trip, same anti-fraud visibility
+            # principle already applied to distance-mismatch events.
+            from trips.models import TripEvent
+
+            TripEvent.objects.create(
+                trip=trip,
+                event_type="assistant_interaction",
+                payload={"user_message": serializer.validated_data["message"][:500], "role": role},
+            )
+
+        result = {"reply": reply_text}
+        if draft_trip:
+            result["draft_trip"] = draft_trip
+        return Response(result)
+
+
+class DeviceTokenView(APIView):
+    """POST /api/devices {token, platform, app} registers a phone for push; DELETE {token} on sign-out."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from core.models import DeviceToken
+
+        token = (request.data.get("token") or "").strip()
+        if not token.startswith("ExponentPushToken[") and not token.startswith("ExpoPushToken["):
+            return Response({"detail": "Not an Expo push token."}, status=400)
+        DeviceToken.objects.update_or_create(token=token, defaults={
+            "user": request.user, "platform": (request.data.get("platform") or "")[:10],
+            "app": (request.data.get("app") or "")[:20]})
+        return Response({"registered": True})
+
+    def delete(self, request):
+        from core.models import DeviceToken
+
+        DeviceToken.objects.filter(user=request.user, token=request.data.get("token", "")).delete()
+        return Response(status=204)
