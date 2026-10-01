@@ -19,10 +19,10 @@ class DriverAdmin(admin.ModelAdmin):
     inlines = [VehicleInline]
     actions = ["mark_verified", "mark_suspended"]
 
-    @admin.action(description="Mark selected drivers as verified")
+    @admin.action(description="Mark selected riders as verified")
     def mark_verified(self, request, queryset):
         queryset.update(verification_status=Driver.VerificationStatus.VERIFIED)
 
-    @admin.action(description="Suspend selected drivers")
+    @admin.action(description="Suspend selected riders")
     def mark_suspended(self, request, queryset):
         queryset.update(verification_status=Driver.VerificationStatus.SUSPENDED, is_online=False)

@@ -6,7 +6,10 @@ import { registerForPush } from "../push";
 import { startSOSQueueFlusher } from "../sosQueue";
 import * as Notifications from "expo-notifications";
 import AssistantScreen from "../screens/AssistantScreen";
+import BookRideScreen from "../screens/BookRideScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
+import RateDriverScreen from "../screens/RateDriverScreen";
+import SupportScreen from "../screens/SupportScreen";
 import { openLink } from "./links";
 import { colors } from "../theme";
 import AuthNavigator from "./AuthNavigator";
@@ -54,6 +57,9 @@ export default function RootNavigator() {
         component={TripStatusScreen}
         options={{ presentation: "modal" }}
       />
+      <Stack.Screen name="BookRide" component={BookRideScreen} />
+      <Stack.Screen name="RateDriver" component={RateDriverScreen} />
+      <Stack.Screen name="Support" component={SupportScreen} />
     </Stack.Navigator>
   );
 }

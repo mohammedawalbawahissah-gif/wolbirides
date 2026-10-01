@@ -28,7 +28,7 @@ export default function PhotoField() {
       {user?.profile_photo ? <Image source={{ uri: user.profile_photo }} style={styles.photo} accessibilityLabel="Your profile photo" />
         : <View style={[styles.photo, styles.placeholder]}><Text style={styles.initials}>{initials}</Text></View>}
       <View style={{ gap: 6 }}>
-        <Text style={typography.muted}>{busy ? "Uploading…" : "A clear photo helps riders and drivers recognise you."}</Text>
+        {busy && <Text style={typography.muted}>Uploading…</Text>}
         <View style={{ flexDirection: "row", gap: 14 }}>
           <TouchableOpacity disabled={busy} onPress={() => choose("camera")}><Text style={styles.link}>Take photo</Text></TouchableOpacity>
           <TouchableOpacity disabled={busy} onPress={() => choose("library")}><Text style={styles.link}>Choose photo</Text></TouchableOpacity>

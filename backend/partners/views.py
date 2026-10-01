@@ -18,7 +18,7 @@ class PartnerSerializer(serializers.ModelSerializer):
 
 
 class PartnerListView(APIView):
-    """GET /api/partners?zone_id= — WR-24 partner venues riders can pick as destinations."""
+    """GET /api/partners?zone_id= — WR-24 partner venues passengers can pick as destinations."""
 
     permission_classes = [IsAuthenticated]
 
@@ -79,7 +79,7 @@ class ActivePlacementsView(APIView):
     """
     GET /api/placements/active?zone_id= — WR-24.
 
-    Same answer for every rider in a zone: no per-user targeting, and nothing
+    Same answer for every passenger in a zone: no per-user targeting, and nothing
     about the requesting user is read to choose what's shown.
     """
 
@@ -95,7 +95,7 @@ class ActivePlacementsView(APIView):
         qs = qs.filter(Q(zone__isnull=True) | Q(zone_id=zone_id)) if zone_id else qs.filter(zone__isnull=True)
         data = PlacementSerializer(qs.order_by("active_from")[:3], many=True).data
         for d in data:
-            d.pop("price_paid", None)  # commercial terms aren't riders' business
+            d.pop("price_paid", None)  # commercial terms aren't passengers' business
         return Response(data)
 
 

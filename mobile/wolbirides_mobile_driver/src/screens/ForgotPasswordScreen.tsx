@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import PasswordField from "../components/PasswordField";
 import { Button, ErrorBanner, FieldLabel, TextField } from "../components/ui";
 import type { AuthStackScreenProps } from "../navigation/types";
 import { typography } from "../theme";
@@ -51,9 +52,8 @@ export default function ForgotPasswordScreen({ navigation }: AuthStackScreenProp
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <View style={styles.hero}>
-          <View style={styles.logoMark}><Text style={styles.logoMarkText}>WR</Text></View>
-          <Text style={styles.heroTitle}>Reset your password</Text>
-          <Text style={styles.heroSubtitle}>We'll email you a 6-digit code.</Text>
+          <Image source={require("../../assets/logo-mark.png")} style={styles.logoMark} />
+          <Text style={styles.heroName}>WolbiRides</Text>
         </View>
         <ScrollView contentContainerStyle={styles.formArea} keyboardShouldPersistTaps="handled">
           {step === "email" ? (
@@ -67,13 +67,12 @@ export default function ForgotPasswordScreen({ navigation }: AuthStackScreenProp
             </>
           ) : (
             <>
-              <Text style={[typography.muted, { marginBottom: 12 }]}>{info} Codes expire after 5 minutes.</Text>
+              <Text style={[typography.muted, { marginBottom: 12 }]}>{info}</Text>
               <FieldLabel>Code from the email</FieldLabel>
               <TextField value={code} onChangeText={(t) => setCode(t.replace(/\D/g, ""))} keyboardType="number-pad"
                 maxLength={6} autoComplete="one-time-code" autoFocus />
               <FieldLabel>New password</FieldLabel>
-              <TextField value={password} onChangeText={setPassword} secureTextEntry autoComplete="new-password" />
-              <Text style={[typography.muted, { marginBottom: 12 }]}>At least 8 characters, not all numbers, and not a common password.</Text>
+              <PasswordField value={password} onChangeText={setPassword} autoComplete="new-password" />
               {error && <ErrorBanner message={error} />}
               <Button title={busy ? "Saving…" : "Set new password and sign in"} variant="primary" onPress={reset} loading={busy}
                 disabled={code.length !== 6 || password.length < 8} />

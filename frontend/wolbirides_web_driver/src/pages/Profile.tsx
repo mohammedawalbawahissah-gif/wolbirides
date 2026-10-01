@@ -32,7 +32,6 @@ export default function Profile() {
         <FileDrop
           kind="profile_photo"
           label="Profile photo"
-          hint="Riders see this when you're matched — a clear headshot builds trust."
           value={user?.profile_photo || null}
           onChange={handlePhotoChange}
         />
@@ -53,6 +52,7 @@ export default function Profile() {
         </div>
       </div>
 
+      <PayoutCard />
       <CapabilitiesCard />
       <HowRidesAreShared />
       <SupportCard />
@@ -88,9 +88,6 @@ function EmergencyContactCard() {
   return (
     <div className="card" style={{ maxWidth: 420, marginTop: 16 }}>
       <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>Emergency contact</h2>
-      <p style={{ fontSize: 13.5, color: "var(--ink-muted)", marginTop: 0 }}>
-        If you press SOS during a trip, we'll text this person your location.
-      </p>
       <form onSubmit={save}>
         <label className="field-label" htmlFor="ec-name">Name</label>
         <input id="ec-name" className="field-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Brother" />
@@ -98,6 +95,50 @@ function EmergencyContactCard() {
         <input id="ec-phone" className="field-input" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="024 123 4567" />
         {error && <p style={{ color: "var(--danger)", fontSize: 13.5 }}>{error}</p>}
         <button className="btn btn-gold" type="submit" disabled={saving}>{saving ? "Saving…" : "Save contact"}</button>
+      </form>
+    </div>
+  );
+}
+
+/** Where payouts go — a rider's mobile money wallet is sometimes on a different number
+ * from the one they signed up with, so this is never assumed from the account phone. */
+function PayoutCard() {
+  const { user } = useAuth();
+  const { driver, setDriver } = useDriverContext();
+  const toast = useToast();
+  const [provider, setProvider] = useState(driver.payout_provider ?? "momo");
+  const [phone, setPhone] = useState(driver.payout_phone ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { data } = await api.patch("/drivers/me", { payout_provider: provider, payout_phone: phone.trim() });
+      setDriver(data);
+      toast.show("Payout details saved.", "success");
+    } catch {
+      toast.show("Couldn't save that. Try again.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 420, marginTop: 16 }}>
+      <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>Get paid</h2>
+      <form onSubmit={save}>
+        <label className="field-label" htmlFor="payout-provider">Provider</label>
+        <select id="payout-provider" className="field-input" value={provider}
+          onChange={(e) => setProvider(e.target.value as "momo" | "hubtel")}>
+          <option value="momo">MTN MoMo</option>
+          <option value="hubtel">Hubtel</option>
+        </select>
+        <label className="field-label" htmlFor="payout-phone">Number</label>
+        <input id="payout-phone" className="field-input" inputMode="tel" value={phone}
+          placeholder={user?.phone || "Your account phone"} onChange={(e) => setPhone(e.target.value)} />
+        <p className="opt-note">Leave blank to use your account phone.</p>
+        <button className="btn btn-gold" type="submit" disabled={saving}>{saving ? "Saving…" : "Save payout details"}</button>
       </form>
     </div>
   );
@@ -116,11 +157,13 @@ function CapabilitiesCard() {
     }
   }
 
-  const ITEMS: [keyof typeof driver & string, string, string][] = [
-    ["offers_quiet_ride", "Quiet rides", "Happy to keep music off and chat to a minimum"],
-    ["has_luggage_space", "Luggage space", "Room for suitcases or boxes"],
-    ["accessibility_trained", "Accessibility help", "Comfortable helping passengers with mobility needs"],
-    ["accepts_deliveries", "Deliveries", "Carry packages for WolbiDeliver"],
+  // Same wording and order as the passenger's "Driver preference", so what a passenger can ask for is
+  // exactly what a driver can say they offer. "Deliveries" is driver-only, so it's last.
+  const ITEMS: [keyof typeof driver & string, string][] = [
+    ["offers_quiet_ride", "Quiet ride"],
+    ["has_luggage_space", "Space for luggage"],
+    ["accessibility_trained", "Help getting in and out"],
+    ["accepts_deliveries", "Deliveries (WolbiDeliver)"],
   ];
 
   async function toggle(field: string, value: boolean) {
@@ -135,29 +178,21 @@ function CapabilitiesCard() {
   return (
     <div className="card" style={{ maxWidth: 420, marginTop: 16 }}>
       <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>What you offer</h2>
-      <p style={{ fontSize: 13.5, color: "var(--ink-muted)", marginTop: 0 }}>
-        Passengers who ask for these get matched with you first when you're about as close as other drivers.
-      </p>
-      <label className="field-label" htmlFor="drv-gender" style={{ marginTop: 8 }}>Gender (optional)</label>
+      <label className="field-label" htmlFor="drv-gender" style={{ marginTop: 8 }}>Rider gender (optional)</label>
       <select id="drv-gender" className="field-input" value={driver.gender ?? ""} onChange={(e) => setGender(e.target.value)}>
         <option value="">Prefer not to say</option>
-        <option value="female">Female</option>
-        <option value="male">Male</option>
+        <option value="female">Female rider</option>
+        <option value="male">Male rider</option>
       </select>
-      <p style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: -4 }}>
-        Only used to match riders who ask for it. It isn't shown to riders or on your profile.
-      </p>
-      {ITEMS.map(([field, label, hint]) => (
-        <label key={field} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "10px 0",
-          borderTop: "1px solid var(--line)", cursor: "pointer" }}>
-          <input type="checkbox" checked={!!(driver as any)[field]} onChange={(e) => toggle(field, e.target.checked)}
-            style={{ marginTop: 3 }} />
-          <span>
-            <strong style={{ fontSize: 14 }}>{label}</strong>
-            <span style={{ display: "block", fontSize: 12.5, color: "var(--ink-muted)" }}>{hint}</span>
-          </span>
-        </label>
-      ))}
+      <div className="pref-chips">
+        {ITEMS.map(([field, label]) => (
+          <button key={field} type="button" aria-pressed={!!(driver as any)[field]}
+            className={"pref-chip" + ((driver as any)[field] ? " pref-chip-on" : "")}
+            onClick={() => toggle(field, !(driver as any)[field])}>
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -168,8 +203,8 @@ function HowRidesAreShared() {
     <div className="card" style={{ maxWidth: 420, marginTop: 16 }}>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>How rides are offered</h2>
       <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: 0 }}>
-        Most rides go to the nearest free driver, because riders shouldn't wait longer than they need to. Now and
-        then, among drivers who are about equally close, we offer a ride first to the driver who's had fewer rides
+        Most rides go to the nearest free rider, because passengers shouldn't wait longer than they need to. Now and
+        then, among riders who are about equally close, we offer a ride first to the rider who's had fewer rides
         this week, so the work stays reasonably shared. We never send you a ride that's much further away just for
         this.
       </p>

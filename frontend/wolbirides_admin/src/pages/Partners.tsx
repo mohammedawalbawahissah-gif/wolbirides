@@ -18,7 +18,7 @@ export default function Partners() {
 
   return (
     <div>
-      <PageHeader title="Partners" subtitle="Rides ending at each partner and promo codes redeemed. Add partners and codes in Django admin." />
+      <PageHeader title="Partners" />
       <div className="filter-row">
         <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
           <option value={7}>Last 7 days</option>

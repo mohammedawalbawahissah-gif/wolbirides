@@ -20,7 +20,7 @@ from partners.services import PromoError
 from payments.models import Payment
 from payments.services import generate_weekly_payouts
 from trips import services
-from trips.models import Trip, TripPreference
+from trips.models import DeliveryDetail, Trip, TripPreference, Vendor
 from trips.tests import DispatchTestBase
 
 PICKUP = {"lat": Decimal("9.400000"), "lng": Decimal("-0.900000"), "label": "Main gate"}
@@ -48,16 +48,16 @@ class PreferenceTests(DispatchTestBase):
         trip = self._request_trip_scored(self._scored(), options={"preferences": {"preferred_driver_gender": "female"}})
         self.assertEqual(services.current_offered_driver_id(trip), str(self.driver_b.user_id))
 
-    def test_no_matching_driver_asks_rider_never_silently_reassigns(self):
+    def test_no_matching_driver_asks_passenger_never_silently_reassigns(self):
         self.driver_b.gender = ""; self.driver_b.save()
         trip = self._request_trip_scored(self._scored(), options={"preferences": {"preferred_driver_gender": "female"}})
         trip.refresh_from_db()
         self.assertEqual(trip.status, Trip.Status.MATCHING)
-        self.assertEqual(trip.preference_status, Trip.PreferenceStatus.AWAITING_RIDER)
+        self.assertEqual(trip.preference_status, Trip.PreferenceStatus.AWAITING_PASSENGER)
         self.assertIsNone(services.current_offered_driver_id(trip))
-        self.assertTrue(self.passenger.notifications.filter(title__icontains="No matching driver").exists())
+        self.assertTrue(self.passenger.notifications.filter(title__icontains="No matching rider").exists())
 
-    def test_rider_chooses_any_driver(self):
+    def test_passenger_chooses_any_driver(self):
         self.driver_b.gender = ""; self.driver_b.save()
         trip = self._request_trip_scored(self._scored(), options={"preferences": {"preferred_driver_gender": "female"}})
         c = APIClient(); c.force_authenticate(self.passenger)
@@ -65,7 +65,7 @@ class PreferenceTests(DispatchTestBase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(services.current_offered_driver_id(trip), str(self.driver_a.user_id))
 
-    def test_rider_chooses_to_keep_waiting(self):
+    def test_passenger_chooses_to_keep_waiting(self):
         self.driver_b.gender = ""; self.driver_b.save()
         trip = self._request_trip_scored(self._scored(), options={"preferences": {"preferred_driver_gender": "female"}})
         with mock.patch("trips.tasks.retry_preference_dispatch.apply_async") as retry:
@@ -206,6 +206,9 @@ class OrganizationTests(DispatchTestBase):
         today = timezone.localdate()
         inv = generate_invoice(self.org, today.replace(day=1), today + timedelta(days=1))
         self.assertEqual(inv.line_items[0]["paid_with"], "voucher")
+        # The person who booked is a passenger ("rider" is the person carrying the job), so statements say so.
+        self.assertEqual(inv.line_items[0]["passenger"], self.passenger.name or self.passenger.phone)
+        self.assertNotIn("rider", inv.line_items[0])
 
 
 class BundleTests(DispatchTestBase):
@@ -282,6 +285,24 @@ class DeliveryTests(DispatchTestBase):
         self.assertIn(trip.delivery.dropoff_code, sms.call_args[0][1])
         self.assertNotIn(trip.delivery.pickup_code, sms.call_args[0][1])
 
+    def test_sending_a_parcel_defaults_the_sender_to_the_booker_and_texts_only_the_recipient(self):
+        trip, sms = self._delivery()
+        self.assertEqual(trip.delivery.sender_name, "Ama")
+        self.assertEqual(trip.delivery.sender_phone, "+233200000001")
+        self.assertEqual(sms.call_count, 1)
+        self.assertEqual(sms.call_args[0][0], "+233241234567")
+
+    def test_receiving_a_parcel_requires_a_sender_and_texts_them_the_pickup_code(self):
+        receiving = {**self.opts, "recipient_name": "Ama", "recipient_phone": "0200000001"}
+        with self.assertRaises(services.TripRequestError):
+            services.request_trip(self.passenger, self.zone, PICKUP, DEST, options=receiving)
+        self.opts = {**receiving, "sender_name": "Kofi", "sender_phone": "0241234567"}
+        trip, sms = self._delivery()
+        self.assertEqual(sms.call_count, 1)  # only the sender: the booker is the recipient
+        self.assertEqual(sms.call_args[0][0], "+233241234567")
+        self.assertIn(trip.delivery.pickup_code, sms.call_args[0][1])
+        self.assertNotIn(trip.delivery.dropoff_code, sms.call_args[0][1])
+
     def test_full_delivery_lifecycle_with_both_confirmations(self):
         trip, _ = self._delivery()
         services.accept_trip(trip, self.driver_b)
@@ -313,6 +334,118 @@ class DeliveryTests(DispatchTestBase):
     def test_missing_recipient_rejected(self):
         with self.assertRaises(services.TripRequestError):
             services.request_trip(self.passenger, self.zone, PICKUP, DEST, options={"trip_type": "delivery"})
+
+
+class DeliverySizeSurchargeTests(DispatchTestBase):
+    """WR-25: parcel surcharge scales with package_size instead of one flat amount."""
+
+    def setUp(self):
+        super().setUp()
+        self.driver_b.accepts_deliveries = True; self.driver_b.save()
+
+    def _quote_for(self, size):
+        with mock.patch("accounts.services._send_sms"), self.captureOnCommitCallbacks(execute=True):
+            trip = self._request_trip_scored(
+                [(0.5, str(self.driver_a.user_id)), (2.5, str(self.driver_b.user_id))],
+                options={"trip_type": "delivery", "recipient_name": "Kofi", "recipient_phone": "0241234567",
+                         "package_description": "Item", "package_size": size},
+            )
+        return trip.fare_quote.surcharge
+
+    def test_surcharge_increases_with_package_size(self):
+        small, medium, large = self._quote_for("small"), self._quote_for("medium"), self._quote_for("large")
+        self.assertLess(small, medium)
+        self.assertLess(medium, large)
+
+
+class ErrandAndVendorOrderTests(DispatchTestBase):
+    """WR-25: errand-running and vendor-order deliveries share DeliveryDetail/Trip.Kind.DELIVERY
+    with parcels, but skip the third-party-recipient requirement and notification."""
+
+    def setUp(self):
+        super().setUp()
+        self.driver_b.accepts_deliveries = True; self.driver_b.save()
+
+    def _request(self, options, sms_mock=None):
+        ctx = mock.patch("accounts.services._send_sms") if sms_mock is None else sms_mock
+        with ctx as sms, self.captureOnCommitCallbacks(execute=True):
+            trip = self._request_trip_scored(
+                [(0.5, str(self.driver_a.user_id)), (2.5, str(self.driver_b.user_id))], options=options,
+            )
+        return trip, sms
+
+    def test_errand_needs_a_task_and_a_contact_at_pickup(self):
+        with self.assertRaises(services.TripRequestError):  # no task
+            services.request_trip(self.passenger, self.zone, PICKUP, DEST,
+                                   options={"trip_type": "delivery", "delivery_subtype": "errand", "sender_name": "Auntie Ama"})
+        with self.assertRaises(services.TripRequestError):  # nobody to collect from
+            services.request_trip(self.passenger, self.zone, PICKUP, DEST, options={
+                "trip_type": "delivery", "delivery_subtype": "errand", "task_description": "Buy fabric"})
+        trip, _ = self._request({"trip_type": "delivery", "delivery_subtype": "errand",
+                                 "task_description": "Buy 2 yards of kente from Stall 14, Aboabo",
+                                 "sender_name": "Auntie Ama, Stall 14", "spend_limit": "150.00"})
+        self.assertEqual(trip.delivery.delivery_subtype, DeliveryDetail.Subtype.ERRAND)
+        self.assertEqual(trip.delivery.sender_name, "Auntie Ama, Stall 14")
+        # It comes back to the requester, so the recipient defaults to them.
+        self.assertEqual(trip.delivery.recipient_name, "Ama")
+        self.assertEqual(trip.delivery.recipient_phone, "+233200000001")
+        self.assertEqual(str(trip.delivery.spend_limit), "150.00")
+
+    def test_errand_texts_nobody_when_the_requester_is_the_recipient_and_there_is_no_sender_phone(self):
+        trip, sms = self._request({"trip_type": "delivery", "delivery_subtype": "errand",
+                                   "task_description": "Buy fabric", "sender_name": "Stall 14"})
+        sms.assert_not_called()
+
+    def test_errand_sender_with_a_phone_gets_the_pickup_code(self):
+        trip, sms = self._request({"trip_type": "delivery", "delivery_subtype": "errand",
+                                   "task_description": "Buy fabric", "sender_name": "Auntie Ama",
+                                   "sender_phone": "0243333333"})
+        sms.assert_called_once()
+        self.assertEqual(sms.call_args[0][0], "+233243333333")
+        self.assertIn(trip.delivery.pickup_code, sms.call_args[0][1])
+        self.assertNotIn(trip.delivery.dropoff_code, sms.call_args[0][1])
+
+    def test_vendor_order_sender_defaults_to_the_vendor(self):
+        trip, sms = self._request({"trip_type": "delivery", "delivery_subtype": "vendor_order",
+                                   "task_description": "2x jollof", "vendor_name": "Vero's Kitchen",
+                                   "vendor_phone": "0244444444"})
+        self.assertEqual(trip.delivery.sender_name, "Vero's Kitchen")
+        self.assertEqual(trip.delivery.sender_phone, "+233244444444")
+        self.assertEqual(trip.delivery.recipient_name, "Ama")
+        self.assertEqual(sms.call_count, 1)  # the vendor gets the pickup code; the requester sees theirs in-app
+        self.assertIn(trip.delivery.pickup_code, sms.call_args[0][1])
+
+    def test_vendor_order_creates_vendor_and_is_reused_case_insensitively(self):
+        trip, _ = self._request({"trip_type": "delivery", "delivery_subtype": "vendor_order",
+                                 "task_description": "2x jollof, no salad",
+                                 "vendor_name": "Vero's Kitchen", "vendor_location": "Behind GNPC"})
+        self.assertEqual(Vendor.objects.count(), 1)
+        self.assertEqual(trip.delivery.vendor.location_label, "Behind GNPC")
+
+        trip2, _ = self._request({"trip_type": "delivery", "delivery_subtype": "vendor_order",
+                                  "task_description": "1x banku and okro",
+                                  "vendor_name": "vero's kitchen"})
+        self.assertEqual(Vendor.objects.count(), 1)  # same vendor, different casing
+        self.assertEqual(trip2.delivery.vendor_id, trip.delivery.vendor_id)
+
+    def test_vendor_order_requires_a_vendor_name_or_id(self):
+        with self.assertRaises(services.TripRequestError):
+            services.request_trip(self.passenger, self.zone, PICKUP, DEST, options={
+                "trip_type": "delivery", "delivery_subtype": "vendor_order", "task_description": "Order food",
+            })
+
+    def test_vendor_order_can_reference_an_existing_vendor_by_id(self):
+        vendor = Vendor.objects.create(name="Tamale Fresh Mart", location_label="Aboabo market")
+        trip, _ = self._request({"trip_type": "delivery", "delivery_subtype": "vendor_order",
+                                 "task_description": "Rice and oil", "vendor_id": str(vendor.id)})
+        self.assertEqual(trip.delivery.vendor_id, vendor.id)
+        self.assertEqual(Vendor.objects.count(), 1)
+
+    def test_unknown_delivery_subtype_rejected(self):
+        with self.assertRaises(services.TripRequestError):
+            services.request_trip(self.passenger, self.zone, PICKUP, DEST, options={
+                "trip_type": "delivery", "delivery_subtype": "not_a_real_subtype", "task_description": "x",
+            })
 
 
 class PartnerTests(DispatchTestBase):
@@ -394,7 +527,7 @@ class TrustIndicatorTests(DispatchTestBase):
         from support.models import SupportTicket
 
         SupportTicket.objects.create(user=self.passenger, subject="Didn't realize the bundle expired")
-        SupportTicket.objects.create(user=self.passenger, subject="Driver was late")
+        SupportTicket.objects.create(user=self.passenger, subject="Rider was late")
         admin = User.objects.create_user(phone="+233200000099", role="admin")
         c = APIClient(); c.force_authenticate(admin)
         d = c.get("/api/admin/trust-indicators").data
@@ -412,7 +545,7 @@ class PushTests(DispatchTestBase):
         c.post("/api/devices", {"token": "ExponentPushToken[abc]", "platform": "android", "app": "passenger"}, format="json")
         with mock.patch("core.tasks.send_push.delay", side_effect=RuntimeError("broker down")) as delay, \
              self.captureOnCommitCallbacks(execute=True):
-            notify(self.passenger, "Driver assigned", category="trip")
+            notify(self.passenger, "Rider assigned", category="trip")
         delay.assert_called_once()
 
 

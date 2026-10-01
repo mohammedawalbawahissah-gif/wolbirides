@@ -6,6 +6,16 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "ht
 
 export const api = axios.create({ baseURL: BASE_URL });
 
+/** What to tell a person when a request fails. "No response at all" is a connection problem, never a wrong password. */
+export function requestErrorMessage(err: any, fallback: string): string {
+  if (!err?.response) return "Can't reach the WolbiRides server. Check your connection and that the backend is running.";
+  const { status, data } = err.response;
+  if (status >= 500) return "The server had a problem. Try again in a moment.";
+  if (data && typeof data === "object") return data.detail || fallback;
+  return `The server sent an unexpected reply (${status}). Check that the app points at the WolbiRides backend.`;
+}
+
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("wolbirides_admin_access");
   if (token) {
@@ -101,6 +111,11 @@ export interface Driver {
   current_zone: string | null;
   vehicles: Vehicle[];
   user?: AdminUser;
+  licence_document?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  payout_phone?: string;
+  payout_provider?: "momo" | "hubtel";
 }
 
 export interface FareQuote {
@@ -131,6 +146,20 @@ export interface Trip {
   matched_at: string | null;
   started_at: string | null;
   completed_at: string | null;
+  trip_type?: "ride" | "delivery";
+  payment_method?: string;
+  booker?: { name: string; phone: string };
+  pending_offer?: { driver_name: string | null; offered_at: string; expires_at: string } | null;
+  queue_reason?: "review" | "no_courier_accepted" | "driver_withdrew" | "reassigned" | null;
+  driver_detail?: { id: string; name: string; phone: string } | null;
+  delivery?: {
+    delivery_subtype: "parcel" | "errand" | "vendor_order";
+    sender_name: string; sender_phone: string; recipient_name: string; recipient_phone: string;
+    package_description: string; package_size: string; task_description: string; spend_limit: string | null;
+    vendor: { id: string; name: string; location_label: string; phone: string } | null;
+    external_courier: { id: string; name: string; phone: string } | null;
+    picked_up_at: string | null;
+  } | null;
 }
 
 export interface Incident {

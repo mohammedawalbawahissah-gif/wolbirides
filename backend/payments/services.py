@@ -8,7 +8,7 @@ import uuid
 
 from django.conf import settings
 
-from payments import momo
+from payments import hubtel, momo
 from payments.models import Payment
 from trips.models import Trip
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentError(ValueError):
-    """A payment action that isn't allowed for this trip, with rider-facing text."""
+    """A payment action that isn't allowed for this trip, with passenger-facing text."""
 
 
 def _payable_amount(trip):
@@ -24,7 +24,7 @@ def _payable_amount(trip):
 
 
 def initiate_momo_payment(trip: Trip, phone: str) -> Payment:
-    """Pay-after-trip: sends a MoMo approval prompt to the rider's phone."""
+    """Pay-after-trip: sends a MoMo approval prompt to the passenger's phone."""
     if trip.status != Trip.Status.COMPLETED:
         raise PaymentError("You can pay once the trip is complete.")
     if trip.payment_method in (Trip.PaymentMethod.ORGANIZATION, Trip.PaymentMethod.VOUCHER, Trip.PaymentMethod.BUNDLE):
@@ -61,9 +61,55 @@ def initiate_momo_payment(trip: Trip, phone: str) -> Payment:
     return payment
 
 
+def initiate_hubtel_payment(trip: Trip, phone: str) -> Payment:
+    """Pay-after-trip: sends a Hubtel mobile money charge prompt to the passenger's phone."""
+    if trip.status != Trip.Status.COMPLETED:
+        raise PaymentError("You can pay once the trip is complete.")
+    if trip.payment_method in (Trip.PaymentMethod.ORGANIZATION, Trip.PaymentMethod.VOUCHER, Trip.PaymentMethod.BUNDLE):
+        raise PaymentError("This trip is already paid for.")
+    existing = Payment.objects.filter(trip=trip).first()
+    if existing and existing.status == Payment.Status.SUCCESS:
+        raise PaymentError("This trip is already paid for.")
+
+    amount = _payable_amount(trip)
+    payment, _ = Payment.objects.update_or_create(
+        trip=trip,
+        defaults={"method": Payment.Method.HUBTEL, "funding_source": Payment.FundingSource.HUBTEL,
+                  "amount": amount, "status": Payment.Status.PENDING,
+                  "payer_phone": phone, "failure_reason": "", "provider_status": "", "confirmed_by": ""},
+    )
+    if not hubtel.enabled():
+        payment.provider_reference = f"dev-{uuid.uuid4().hex[:12]}"
+        payment.save(update_fields=["provider_reference", "updated_at"])
+        logger.info("[DEV HUBTEL] would charge %s GH₵%s for trip %s", phone, amount, trip.id)
+        return payment
+    try:
+        accepted = hubtel.request_to_pay(amount=amount, phone=phone, external_id=f"trip:{payment.id}",
+                                         description=f"WolbiRides trip {str(trip.id)[:8]}")
+    except hubtel.HubtelError as exc:
+        logger.warning("Hubtel charge failed for trip %s: %s %s", trip.id, exc.status_code, exc.body)
+        payment.status = Payment.Status.FAILED
+        payment.failure_reason = "Hubtel couldn't start the payment. Check the number and try again, or pay cash."
+        payment.save(update_fields=["status", "failure_reason", "updated_at"])
+        return payment
+    payment.provider_reference = accepted.reference_id
+    payment.save(update_fields=["provider_reference", "updated_at"])
+    return payment
+
+
 def refresh_payment_status(payment: Payment) -> Payment:
-    """Asks MTN for the outcome of a pending MoMo payment (the rider's app polls this)."""
-    if payment.method != Payment.Method.MOMO or payment.status != Payment.Status.PENDING:
+    """Asks the provider for the outcome of a pending MoMo/Hubtel payment (the passenger's app polls this)."""
+    if payment.method not in (Payment.Method.MOMO, Payment.Method.HUBTEL) or payment.status != Payment.Status.PENDING:
+        return payment
+    if payment.method == Payment.Method.HUBTEL:
+        if not hubtel.enabled():
+            if settings.HUBTEL_DEV_AUTO_APPROVE:
+                _apply_collection_status(payment, {"status": "Success"})
+            return payment
+        try:
+            _apply_collection_status(payment, hubtel.get_status(payment.provider_reference))
+        except hubtel.HubtelError as exc:
+            logger.warning("Hubtel status check failed for payment %s: %s", payment.id, exc)
         return payment
     if not momo.enabled(momo.COLLECTION):
         if settings.MOMO_DEV_AUTO_APPROVE:
@@ -79,12 +125,13 @@ def refresh_payment_status(payment: Payment) -> Payment:
 def _apply_collection_status(payment, payload):
     raw = payload.get("status", "")
     payment.provider_status = raw
-    if raw == "SUCCESSFUL":
+    if raw in ("SUCCESSFUL", "Success"):
         payment.status = Payment.Status.SUCCESS
         payment.failure_reason = ""
-    elif raw in ("FAILED", "REJECTED", "TIMEOUT"):
+    elif raw in ("FAILED", "REJECTED", "TIMEOUT", "Failed", "Cancelled", "Unknown"):
         payment.status = Payment.Status.FAILED
-        payment.failure_reason = momo.reason_text(payload)
+        reason_fn = hubtel.reason_text if payment.method == Payment.Method.HUBTEL else momo.reason_text
+        payment.failure_reason = reason_fn(payload)
     payment.save(update_fields=["status", "provider_status", "failure_reason", "updated_at"])
     if payment.status == Payment.Status.SUCCESS:
         _log_trip_event(payment.trip, "payment_succeeded", {"method": payment.method, "amount": str(payment.amount)})
@@ -117,6 +164,16 @@ def handle_momo_callback(reference_id: str = "", external_id: str = ""):
     MTN's callback is unauthenticated, so its body is never trusted: we only
     use it to find *which* transaction changed, then ask MTN directly.
     """
+    return _handle_provider_callback(reference_id, external_id)
+
+
+def handle_hubtel_callback(reference_id: str = "", external_id: str = ""):
+    """Same hardening as handle_momo_callback: the body only identifies the transaction;
+    the outcome is always re-read from Hubtel directly."""
+    return _handle_provider_callback(reference_id, external_id)
+
+
+def _handle_provider_callback(reference_id: str = "", external_id: str = ""):
     from bundles.models import PassengerBundle
     from payments.models import Payout
 
@@ -132,6 +189,9 @@ def handle_momo_callback(reference_id: str = "", external_id: str = ""):
         payout = Payout.objects.filter(id=obj_id).first()
         return check_payout_status(payout) if payout else None
     return None
+
+
+
 
 
 def _log_trip_event(trip, event_type, payload):
@@ -180,7 +240,7 @@ def refresh_bundle_payment(bundle):
     if payload.get("status") == "SUCCESSFUL":
         return activate(bundle, payment_reference=bundle.payment_reference)
     if payload.get("status") in ("FAILED", "REJECTED", "TIMEOUT"):
-        # Leave it pending so the rider can try again; clear the dead reference.
+        # Leave it pending so the passenger can try again; clear the dead reference.
         bundle.payment_reference = ""
         bundle.save(update_fields=["payment_reference", "updated_at"])
     return bundle
@@ -192,22 +252,22 @@ def refresh_bundle_payment(bundle):
 # by who actually paid (Payment.funding_source). Cash is excluded: the driver
 # already holds that fare.
 PAYOUT_FUNDING_SOURCES = [
-    Payment.FundingSource.MOMO, Payment.FundingSource.ORGANIZATION_ACCOUNT,
+    Payment.FundingSource.MOMO, Payment.FundingSource.HUBTEL, Payment.FundingSource.ORGANIZATION_ACCOUNT,
     Payment.FundingSource.ORGANIZATION_VOUCHER, Payment.FundingSource.RIDE_BUNDLE,
 ]
 
 def generate_payout_for_driver(driver, period_start, period_end):
     """
-    Builds (but does not disburse) one Payout covering every completed
-    MoMo-, organization- or bundle-paid trip in [period_start, period_end) for this driver.
+    Builds (but does not disburse) one Payout covering every completed trip in
+    [period_start, period_end) for this driver paid through PAYOUT_FUNDING_SOURCES
+    (MoMo, Hubtel, an organization account or voucher, or a ride bundle).
 
     IMPORTANT: cash trips are deliberately excluded. Cash is collected by
     the driver directly from the passenger at the time of the ride — the
     driver already has that money in hand. Including cash trips here
     would pay the driver a second time for fares they've already
-    collected in person. Only MoMo trips (where the platform, not the
-    driver, received the fare) create money the platform owes back to
-    the driver.
+    collected in person. Only trips where the platform, not the driver,
+    received the fare create money the platform owes back to the driver.
 
     This does mean commission on cash trips isn't collected anywhere yet
     — that's the same open question PRD Section 12 already flagged
@@ -313,21 +373,28 @@ def disburse_payout(payout):
         payout.save(update_fields=["status", "provider_reference", "updated_at"])
         return payout
 
-    phone = payout.driver.user.phone
-    if not momo.enabled(momo.DISBURSEMENT):
-        logger.info("[DEV MOMO PAYOUT] would pay %s GH₵%s", phone, payout.amount)
+    from payments import hubtel
+
+    phone, provider = payout.driver.payout_destination()
+    payout.provider = provider
+    if provider == "hubtel":
+        enabled, transfer_fn, error_cls = hubtel.enabled(), hubtel.transfer, hubtel.HubtelError
+        kwargs = {"payer_message": "WolbiRides weekly payout"}
+    else:
+        enabled, transfer_fn, error_cls = momo.enabled(momo.DISBURSEMENT), momo.transfer, momo.MoMoError
+        kwargs = {"payer_message": "WolbiRides weekly payout", "payee_note": f"{payout.period_start} to {payout.period_end}"}
+
+    if not enabled:
+        logger.info("[DEV %s PAYOUT] would pay %s GH₵%s", provider.upper(), phone, payout.amount)
         payout.provider_reference = f"dev-{uuid.uuid4().hex[:12]}"
         return _finish_payout(payout, succeeded=True)
 
     try:
-        accepted = momo.transfer(
-            amount=payout.amount, phone=phone, external_id=f"payout:{payout.id}",
-            payer_message="WolbiRides weekly payout", payee_note=f"{payout.period_start} to {payout.period_end}",
-        )
-    except momo.MoMoError as exc:
-        logger.warning("MoMo transfer failed for payout %s: %s %s", payout.id, exc.status_code, exc.body)
+        accepted = transfer_fn(amount=payout.amount, phone=phone, external_id=f"payout:{payout.id}", **kwargs)
+    except error_cls as exc:
+        logger.warning("%s transfer failed for payout %s: %s %s", provider, payout.id, getattr(exc, "status_code", None), getattr(exc, "body", exc))
         payout.retry_count += 1
-        payout.failure_reason = "MoMo didn't accept the transfer. Will retry."
+        payout.failure_reason = f"{'MoMo' if provider == 'momo' else 'Hubtel'} didn't accept the transfer. Will retry."
         payout.status = Payout.Status.FAILED
         payout.save(update_fields=["status", "failure_reason", "retry_count", "updated_at"])
         return payout
@@ -335,24 +402,33 @@ def disburse_payout(payout):
     payout.provider_reference = accepted.reference_id
     payout.status = Payout.Status.PROCESSING
     payout.failure_reason = ""
-    payout.save(update_fields=["status", "provider_reference", "failure_reason", "updated_at"])
+    payout.save(update_fields=["status", "provider", "provider_reference", "failure_reason", "updated_at"])
     return payout
 
 
 def check_payout_status(payout):
+    from payments import hubtel
     from payments.models import Payout
 
     if payout.status != Payout.Status.PROCESSING:
         return payout
+    is_hubtel = payout.provider == "hubtel"
     try:
-        payload = momo.get_status(momo.DISBURSEMENT, payout.provider_reference)
+        if is_hubtel:
+            payload = hubtel.get_status(payout.provider_reference)
+        else:
+            payload = momo.get_status(momo.DISBURSEMENT, payout.provider_reference)
+    except hubtel.HubtelError as exc:
+        logger.warning("Hubtel transfer status failed for payout %s: %s", payout.id, exc)
+        return payout
     except momo.MoMoError as exc:
         logger.warning("MoMo transfer status failed for payout %s: %s", payout.id, exc)
         return payout
-    if payload.get("status") == "SUCCESSFUL":
+    raw = payload.get("status") or payload.get("Status") or ""
+    if raw in ("SUCCESSFUL", "Success"):
         return _finish_payout(payout, succeeded=True)
-    if payload.get("status") in ("FAILED", "REJECTED"):
-        payout.failure_reason = momo.reason_text(payload)
+    if raw in ("FAILED", "REJECTED", "Failed", "Cancelled"):
+        payout.failure_reason = hubtel.reason_text(payload) if is_hubtel else momo.reason_text(payload)
         return _finish_payout(payout, succeeded=False)
     return payout
 

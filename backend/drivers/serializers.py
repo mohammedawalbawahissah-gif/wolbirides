@@ -18,6 +18,9 @@ class DriverApplicationSerializer(serializers.Serializer):
     licence_document = serializers.URLField(required=False, allow_blank=True)
     emergency_contact_name = serializers.CharField(required=False, allow_blank=True)
     emergency_contact_phone = serializers.CharField(required=False, allow_blank=True)
+    # Optional: left blank, payouts go to the account phone by MoMo (see Driver.payout_destination).
+    payout_phone = serializers.CharField(required=False, allow_blank=True)
+    payout_provider = serializers.ChoiceField(choices=["momo", "hubtel"], required=False)
     plate_number = serializers.CharField(max_length=20)
     vehicle_photo = serializers.URLField(required=False, allow_blank=True)
     vehicle_registration_document = serializers.URLField(required=False, allow_blank=True)
@@ -34,7 +37,7 @@ class DriverApplicationSerializer(serializers.Serializer):
         if request:
             existing = existing.exclude(driver__user=request.user)
         if existing.exists():
-            raise serializers.ValidationError("This vehicle plate is already registered to another driver.")
+            raise serializers.ValidationError("This vehicle plate is already registered to another rider.")
         return value
 
 
@@ -44,9 +47,10 @@ class DriverSerializer(serializers.ModelSerializer):
     class Meta:
         model = Driver
         fields = [
-            "id", "licence_number", "licence_expiry", "verification_status",
+            "id", "licence_number", "licence_expiry", "licence_document", "verification_status",
             "quality_score", "is_online", "current_zone", "vehicles",
             "offers_quiet_ride", "has_luggage_space", "accessibility_trained", "accepts_deliveries",
+            "emergency_contact_name", "emergency_contact_phone", "payout_phone", "payout_provider",
         ]
         read_only_fields = ["id", "verification_status", "quality_score"]
 

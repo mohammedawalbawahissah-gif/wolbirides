@@ -33,7 +33,7 @@ export default function PostTripCheckin({ tripId }: { tripId: string }) {
             onChange={(e) => setDetails(e.target.value)} />
           <button className="btn btn-primary" disabled={busy} onClick={() => send("something_off")}>Send to safety team</button>
           <p style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
-            This goes to the WolbiRides safety team, not the rider. If you're in danger now, use SOS or call 112.
+            If you're in danger now, use SOS or call 112.
           </p>
         </>
       )}

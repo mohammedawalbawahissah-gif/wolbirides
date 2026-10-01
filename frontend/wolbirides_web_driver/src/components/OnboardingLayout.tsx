@@ -6,7 +6,7 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
     <div className="onboarding-page">
       <header className="onboarding-header">
         <span className="brand-mark">WR</span>
-        <span className="onboarding-brand-name">WolbiRides Driver</span>
+        <span className="onboarding-brand-name">WolbiRides Rider</span>
       </header>
       <main className="onboarding-main">{children}</main>
     </div>

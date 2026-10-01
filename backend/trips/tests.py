@@ -22,7 +22,7 @@ IN_MEMORY_LAYER = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"
 
 def _make_driver(phone, status=Driver.VerificationStatus.VERIFIED, online=True):
     """A driver as dispatch sees them: verified and switched online (the apps call drivers/me/status)."""
-    user = User.objects.create_user(phone=phone, name=f"Driver {phone[-2:]}", role="driver")
+    user = User.objects.create_user(phone=phone, name=f"Rider {phone[-2:]}", role="driver")
     return Driver.objects.create(user=user, licence_number=f"L-{phone[-4:]}", verification_status=status,
                                  is_online=online and status == Driver.VerificationStatus.VERIFIED)
 

@@ -48,7 +48,6 @@ export default function Support() {
     <div>
       <PageHeader
         title="Support"
-        subtitle="In-app tickets from passengers and drivers, per WR-06.5."
       />
 
       {error && <EmptyState message={error} />}

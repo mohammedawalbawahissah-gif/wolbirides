@@ -18,7 +18,7 @@ export default function EarningsScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={typography.h1}>Earnings</Text>
-      <Text style={[typography.muted, styles.subtitle]}>Computed live from your completed trips.</Text>
+
 
       {!earnings && <EmptyState message="Loading…" />}
 

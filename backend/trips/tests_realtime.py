@@ -44,10 +44,10 @@ class RealtimeTests(TransactionTestCase):
         self.write_mock = self.writes.start(); self.addCleanup(self.writes.stop)
         p = mock.patch("trips.consumers.remove_driver_location", new=mock.AsyncMock()); p.start(); self.addCleanup(p.stop)
         self.zone = ServiceZone.objects.create(name="Z", boundary={}, base_fare=Decimal("5"), per_km_rate=Decimal("2"))
-        self.rider = User.objects.create_user(phone="+233200000001", role="passenger")
+        self.passenger = User.objects.create_user(phone="+233200000001", role="passenger")
         self.other = User.objects.create_user(phone="+233200000002", role="passenger")
         self.driver = _make_driver("+233200000011")
-        self.trip = Trip.objects.create(passenger=self.rider, driver=self.driver, zone=self.zone, status="matched",
+        self.trip = Trip.objects.create(passenger=self.passenger, driver=self.driver, zone=self.zone, status="matched",
                                         pickup_lat=9.4, pickup_lng=-0.9, destination_lat=9.42, destination_lng=-0.88)
 
     def _connect(self, path, user=None):
@@ -62,13 +62,13 @@ class RealtimeTests(TransactionTestCase):
     # --- H2: trip channel authorization ---
     def test_trip_channel_only_for_people_on_the_trip(self):
         path = f"ws/trip/{self.trip.id}/"
-        self.assertTrue(self._connect(path, self.rider))
+        self.assertTrue(self._connect(path, self.passenger))
         self.assertTrue(self._connect(path, self.driver.user))
         self.assertFalse(self._connect(path, self.other))
         other_driver = _make_driver("+233200000012")
         self.assertFalse(self._connect(path, other_driver.user))  # e.g. a driver who declined the offer
         self.assertFalse(self._connect(path))  # anonymous
-        self.assertFalse(self._connect("ws/trip/00000000-0000-0000-0000-000000000000/", self.rider))
+        self.assertFalse(self._connect("ws/trip/00000000-0000-0000-0000-000000000000/", self.passenger))
 
     # --- H1: driver channel eligibility ---
     def test_unverified_driver_cannot_connect(self):
@@ -105,7 +105,7 @@ class RealtimeTests(TransactionTestCase):
             from incidents.models import Incident
             from incidents.services import create_incident
 
-            await sync_to_async(create_incident)(self.rider, Incident.Severity.P0_CRITICAL, "SOS", trip=self.trip)
+            await sync_to_async(create_incident)(self.passenger, Incident.Severity.P0_CRITICAL, "SOS", trip=self.trip)
 
         async def go():
             comm = WebsocketCommunicator(application, f"/ws/driver/location/?token={token(self.driver.user)}")
@@ -124,6 +124,58 @@ class RealtimeTests(TransactionTestCase):
         self.assertEqual((self.driver.verification_status, self.driver.is_online), ("suspended", False))
 
 
+
+    def test_passenger_sees_matched_then_arriving_then_started_live(self):
+        """The passenger's own /ws/trip/<id>/ socket, not just the driver's, must update at each stage —
+        this is what the trip-status screen re-fetches on to show the driver as soon as they're assigned."""
+        # setUp's own fixture trip has this driver "matched" already — free them, or dispatch correctly
+        # treats them as busy and this test's booking finds nobody.
+        Trip.objects.filter(id=self.trip.id).update(status="cancelled")
+
+        async def scored(*a, **k):
+            return [(0.5, str(self.driver.user_id))]
+
+        async def go():
+            from asgiref.sync import sync_to_async
+
+            def book():
+                with mock.patch("trips.services.scored_candidate_drivers", side_effect=scored):
+                    trip = services.request_trip(self.passenger, self.zone, {"lat": Decimal("9.4"), "lng": Decimal("-0.9")},
+                                                 {"lat": Decimal("9.42"), "lng": Decimal("-0.88")})
+                    services.start_dispatch_cascade(trip)
+                return trip.id
+
+            def do_accept(trip_id):
+                services.accept_trip(Trip.objects.get(id=trip_id), self.driver)
+
+            def do_arrive(trip_id):
+                services.mark_driver_arriving(Trip.objects.get(id=trip_id))
+
+            def do_start(trip_id):
+                services.start_trip(Trip.objects.get(id=trip_id))
+
+            trip_id = await sync_to_async(book, thread_sensitive=False)()
+            comm = WebsocketCommunicator(application, f"/ws/trip/{trip_id}/?token={token(self.passenger)}")
+            ok, _ = await comm.connect(); assert ok
+
+            await sync_to_async(do_accept, thread_sensitive=False)(trip_id)
+            matched = await comm.receive_json_from(timeout=2)
+
+            await sync_to_async(do_arrive, thread_sensitive=False)(trip_id)
+            arriving = await comm.receive_json_from(timeout=2)
+
+            await sync_to_async(do_start, thread_sensitive=False)(trip_id)
+            started = await comm.receive_json_from(timeout=2)
+            await comm.disconnect()
+            return matched, arriving, started
+
+        matched, arriving, started = async_to_sync(go)()
+        self.assertEqual(matched["status"], "matched")
+        self.assertEqual(matched["driver_id"], str(self.driver.id))
+        self.assertEqual(arriving["status"], "driver_arriving")
+        self.assertEqual(started["status"], "in_progress")
+
+
 class DispatchEligibilityTests(TransactionTestCase):
     """H1 at the dispatch step itself: presence in Redis is not enough."""
 
@@ -131,7 +183,7 @@ class DispatchEligibilityTests(TransactionTestCase):
         for target in ("trips.tasks.check_dispatch_offer_timeout.apply_async", "trips.matching.remove_driver_location_sync"):
             p = mock.patch(target); p.start(); self.addCleanup(p.stop)
         self.zone = ServiceZone.objects.create(name="Z", boundary={}, base_fare=Decimal("5"), per_km_rate=Decimal("2"))
-        self.rider = User.objects.create_user(phone="+233200000001", role="passenger")
+        self.passenger = User.objects.create_user(phone="+233200000001", role="passenger")
 
     @override_settings(CHANNEL_LAYERS=LAYER, FAIR_QUEUE_SHARE=0.0)
     def test_suspended_or_offline_drivers_are_skipped(self):
@@ -143,7 +195,7 @@ class DispatchEligibilityTests(TransactionTestCase):
             return [(0.1, str(near_suspended.user_id)), (0.2, str(near_offline.user_id)), (0.9, str(eligible.user_id))]
 
         with mock.patch("trips.services.scored_candidate_drivers", side_effect=scored):
-            trip = services.request_trip(self.rider, self.zone, {"lat": Decimal("9.4"), "lng": Decimal("-0.9")},
+            trip = services.request_trip(self.passenger, self.zone, {"lat": Decimal("9.4"), "lng": Decimal("-0.9")},
                                          {"lat": Decimal("9.42"), "lng": Decimal("-0.88")})
             services.start_dispatch_cascade(trip)
         self.assertEqual(services.current_offered_driver_id(trip), str(eligible.user_id))
@@ -157,7 +209,7 @@ class TrackingModeTests(TransactionTestCase):
         for target in ("trips.consumers.write_driver_location", "trips.consumers.remove_driver_location"):
             p = mock.patch(target, new=mock.AsyncMock()); p.start(); self.addCleanup(p.stop)
         self.zone = ServiceZone.objects.create(name="Z", boundary={}, base_fare=Decimal("5"), per_km_rate=Decimal("2"))
-        self.rider = User.objects.create_user(phone="+233200000001", role="passenger")
+        self.passenger = User.objects.create_user(phone="+233200000001", role="passenger")
         self.driver = _make_driver("+233200000011")
 
     def test_idle_on_connect_and_active_once_a_trip_is_accepted(self):
@@ -173,7 +225,7 @@ class TrackingModeTests(TransactionTestCase):
 
             def book_and_accept():
                 with mock.patch("trips.services.scored_candidate_drivers", side_effect=scored):
-                    trip = services.request_trip(self.rider, self.zone, {"lat": Decimal("9.4"), "lng": Decimal("-0.9")},
+                    trip = services.request_trip(self.passenger, self.zone, {"lat": Decimal("9.4"), "lng": Decimal("-0.9")},
                                                  {"lat": Decimal("9.42"), "lng": Decimal("-0.88")})
                     services.start_dispatch_cascade(trip)
                     services.accept_trip(Trip.objects.get(id=trip.id), self.driver)

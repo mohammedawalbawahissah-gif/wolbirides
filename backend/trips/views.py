@@ -7,14 +7,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.services import mark_saved_address_used
-from core.permissions import IsAdminRole
+from core.permissions import IsAdminRole, IsPassengerRole
 from trips import services
-from trips.models import Rating, Trip
+from trips.models import Rating, Trip, Vendor
 from trips.serializers import (
     RatingSerializer,
     TripCancelSerializer,
     TripRequestSerializer,
     TripSerializer,
+    VendorSerializer,
 )
 from zones.models import ServiceZone
 from bundles.services import BundleError
@@ -25,9 +26,9 @@ REQUEST_ERRORS = (services.TripRequestError, PromoError, OrganizationBillingErro
 
 
 class TripRequestView(APIView):
-    """POST /api/trips — PRD Section 6.2 step 1, then kicks off dispatch."""
+    """POST /api/trips — PRD Section 6.2 step 1, then kicks off dispatch. Passengers only."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPassengerRole]
     throttle_classes = [ActionRateThrottle]
     throttle_scope = "trip_request"
 
@@ -39,7 +40,7 @@ class TripRequestView(APIView):
 
         try:
             trip = self._create(request, data, zone)
-        except REQUEST_ERRORS as exc:  # each carries rider-friendly text
+        except REQUEST_ERRORS as exc:  # each carries passenger-friendly text
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         if data.get("pickup_saved_address_id"):
@@ -47,7 +48,7 @@ class TripRequestView(APIView):
         if data.get("destination_saved_address_id"):
             mark_saved_address_used(request.user, data["destination_saved_address_id"])
 
-        services.start_dispatch_cascade(trip)
+        services.route_new_trip(trip)
         trip.refresh_from_db()
         return Response(TripSerializer(trip, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
@@ -65,7 +66,9 @@ class TripRequestView(APIView):
             options={
                 key: data.get(key)
                 for key in (
-                    "trip_type", "kind", "recipient_name", "recipient_phone", "package_description", "package_size",
+                    "trip_type", "kind", "delivery_subtype", "sender_name", "sender_phone",
+                    "recipient_name", "recipient_phone", "package_description", "package_size",
+                    "task_description", "spend_limit", "vendor_id", "vendor_name", "vendor_location", "vendor_phone",
                     "preferences", "shareable", "is_pool", "payment_method", "organization_id", "voucher_id",
                     "bundle_id", "promo_code",
                 ) if data.get(key) is not None
@@ -109,7 +112,7 @@ class TripCompleteView(APIView):
     def post(self, request, trip_id):
         trip = get_object_or_404(Trip, id=trip_id)
         if not trip.driver or trip.driver.user_id != request.user.id:
-            raise PermissionDenied("Only the assigned driver can complete this trip")
+            raise PermissionDenied("Only the assigned rider can complete this trip")
         try:
             trip = services.complete_trip(trip, delivery_code=request.data.get("delivery_code"))
         except services.DeliveryCodeError as exc:
@@ -137,7 +140,7 @@ class TripAcceptView(APIView):
     def post(self, request, trip_id):
         trip = get_object_or_404(Trip, id=trip_id)
         if not hasattr(request.user, "driver_profile"):
-            raise PermissionDenied("Only drivers can accept trips")
+            raise PermissionDenied("Only riders can accept trips")
         try:
             trip = services.accept_trip(trip, request.user.driver_profile)
         except ValueError as exc:
@@ -153,7 +156,7 @@ class TripDeclineView(APIView):
     def post(self, request, trip_id):
         trip = get_object_or_404(Trip, id=trip_id)
         if not hasattr(request.user, "driver_profile"):
-            raise PermissionDenied("Only drivers can decline trips")
+            raise PermissionDenied("Only riders can decline trips")
         result = services.decline_or_timeout(trip, str(request.user.id))
         if result is None and services.current_offered_driver_id(trip) != str(request.user.id):
             # Either the offer already moved on (timeout) or it was never
@@ -170,12 +173,26 @@ class TripStartView(APIView):
     def post(self, request, trip_id):
         trip = get_object_or_404(Trip, id=trip_id)
         if not trip.driver or trip.driver.user_id != request.user.id:
-            raise PermissionDenied("Only the assigned driver can start this trip")
+            raise PermissionDenied("Only the assigned rider can start this trip")
         try:
             trip = services.start_trip(trip)
         except services.TripFlowError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(TripSerializer(trip, context={"request": request}).data)
+
+
+class DriverCurrentOfferView(APIView):
+    """GET /api/drivers/me/current-offer — the offer pending this driver's response right now, or
+    null. A driver reopening the app (or one whose push never arrived — remote push doesn't work
+    at all in Expo Go, and can be dropped even on a real build) can still see and act on it here,
+    the same as the live push shows in the moment, rather than only through that one message."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not hasattr(request.user, "driver_profile"):
+            raise PermissionDenied("Only riders can query this")
+        return Response(services.offer_for_driver(str(request.user.id)))
 
 
 class DriverActiveTripView(APIView):
@@ -189,7 +206,7 @@ class DriverActiveTripView(APIView):
 
     def get(self, request):
         if not hasattr(request.user, "driver_profile"):
-            raise PermissionDenied("Only drivers can query this")
+            raise PermissionDenied("Only riders can query this")
         trip = (
             Trip.objects.filter(
                 driver=request.user.driver_profile,
@@ -238,7 +255,7 @@ class TripRatingView(APIView):
 class RidePreferenceView(APIView):
     """GET/PUT /api/passengers/me/ride-preferences — WR-19 defaults, copied onto each new trip.
 
-    Never exposed to drivers, other riders, or admin list views.
+    Never exposed to drivers, other passengers, or admin list views.
     """
 
     permission_classes = [IsAuthenticated]
@@ -290,7 +307,7 @@ class DeliveryConfirmView(APIView):
     def post(self, request, trip_id):
         trip = get_object_or_404(Trip, id=trip_id)
         if not trip.driver or trip.driver.user_id != request.user.id:
-            raise PermissionDenied("Only the assigned driver can confirm this delivery")
+            raise PermissionDenied("Only the assigned rider can confirm this delivery")
         code, photo = request.data.get("code", ""), request.data.get("photo_url", "")
         try:
             if self.step == "pickup":
@@ -305,6 +322,22 @@ class DeliveryConfirmView(APIView):
 
 
 # --- WR-21/22: what this passenger can pay with ------------------------------
+
+class VendorSearchView(APIView):
+    """GET /api/vendors?q=... — WR-25 autocomplete when booking a vendor_order delivery.
+    Global for now (no zone filter — see Vendor.zone's docstring); returns closest name
+    matches first, capped small since this backs a type-ahead, not a browse list."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        query = (request.query_params.get("q") or "").strip()
+        vendors = Vendor.objects.all()
+        if query:
+            vendors = vendors.filter(name__icontains=query)
+        vendors = vendors.order_by("name")[:8]
+        return Response(VendorSerializer(vendors, many=True).data)
+
 
 class PaymentOptionsView(APIView):
     """GET /api/passengers/me/payment-options — organizations and bundles usable right now."""
@@ -357,7 +390,7 @@ def _p90_p10(values):
 class AdminTrustIndicatorsView(APIView):
     """
     GET /api/admin/trust-indicators?days=30 — the Growth PRD's three cross-cutting signals that
-    efficiency work has started trading against riders' and drivers' trust.
+    efficiency work has started trading against passengers' and drivers' trust.
     """
 
     permission_classes = [IsAdminRole]
@@ -403,7 +436,7 @@ class AdminTrustIndicatorsView(APIView):
             },
             "driver_trip_distribution_7d": {
                 "gini": _gini(counts), "p90_p10_ratio": _p90_p10(counts), "drivers": len(counts),
-                "what_it_catches": "Dispatch quietly concentrating work on a few drivers (WR-20).",
+                "what_it_catches": "Dispatch quietly concentrating work on a few riders (WR-20).",
             },
             "pressure_language_tickets": {
                 "count": pressured.count(), "of_all_tickets": tickets.count(),

@@ -7,10 +7,12 @@ from rest_framework.views import APIView
 
 from core.permissions import IsAdminRole
 from payments.models import Payment, Payout
-from payments.serializers import MomoInitiateSerializer, PaymentSerializer, PayoutSerializer
+from payments.serializers import HubtelInitiateSerializer, MomoInitiateSerializer, PaymentSerializer, PayoutSerializer
 from payments.services import (
     PaymentError,
+    handle_hubtel_callback,
     handle_momo_callback,
+    initiate_hubtel_payment,
     initiate_momo_payment,
     record_cash_payment,
     refresh_payment_status,
@@ -20,7 +22,7 @@ from trips.services import user_can_access_trip
 
 
 class MomoInitiateView(APIView):
-    """POST /api/payments/momo/initiate {trip_id, phone} — rider pays a completed trip by MoMo."""
+    """POST /api/payments/momo/initiate {trip_id, phone} — the passenger pays a completed trip by MoMo."""
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [ActionRateThrottle]
@@ -31,7 +33,7 @@ class MomoInitiateView(APIView):
         serializer.is_valid(raise_exception=True)
         trip = get_object_or_404(Trip, id=serializer.validated_data["trip_id"])
         if trip.passenger_id != request.user.id:
-            return Response({"detail": "Only the rider can pay for this trip."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "Only the passenger who booked this trip can pay for it."}, status=status.HTTP_403_FORBIDDEN)
         try:
             payment = initiate_momo_payment(trip, serializer.validated_data["phone"])
         except PaymentError as exc:
@@ -39,8 +41,28 @@ class MomoInitiateView(APIView):
         return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
 
 
+class HubtelInitiateView(APIView):
+    """POST /api/payments/hubtel/initiate {trip_id, phone} — the passenger pays a completed trip by Hubtel."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ActionRateThrottle]
+    throttle_scope = "hubtel_initiate"
+
+    def post(self, request):
+        serializer = HubtelInitiateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        trip = get_object_or_404(Trip, id=serializer.validated_data["trip_id"])
+        if trip.passenger_id != request.user.id:
+            return Response({"detail": "Only the passenger who booked this trip can pay for it."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            payment = initiate_hubtel_payment(trip, serializer.validated_data["phone"])
+        except PaymentError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
+
+
 class TripPaymentView(APIView):
-    """GET /api/payments/trip/<trip_id> — current payment, refreshed from MTN if pending (rider/driver poll this)."""
+    """GET /api/payments/trip/<trip_id> — current payment, refreshed from MTN if pending (passenger/driver poll this)."""
 
     permission_classes = [IsAuthenticated]
 
@@ -62,7 +84,7 @@ class CashConfirmView(APIView):
     def post(self, request):
         trip = get_object_or_404(Trip, id=request.data.get("trip_id"))
         if not trip.driver or trip.driver.user_id != request.user.id:
-            return Response({"detail": "Only this trip's driver can confirm cash."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": "Only this trip's rider can confirm cash."}, status=status.HTTP_403_FORBIDDEN)
         try:
             payment = record_cash_payment(trip, confirmed_by="driver")
         except PaymentError as exc:
@@ -85,6 +107,20 @@ class MomoWebhookView(APIView):
         reference_id = request.headers.get("X-Reference-Id") or request.data.get("referenceId") or ""
         external_id = request.data.get("externalId") or ""
         handle_momo_callback(reference_id=reference_id, external_id=external_id)
+        return Response({"detail": "ok"})
+
+
+class HubtelWebhookView(APIView):
+    """POST /api/payments/hubtel/webhook — same hardening as the MoMo webhook: the body only
+    identifies the transaction, the outcome is always re-read from Hubtel directly."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        reference_id = request.data.get("ClientReference") or request.data.get("clientReference") or ""
+        external_id = request.data.get("externalId") or ""
+        handle_hubtel_callback(reference_id=reference_id, external_id=external_id)
         return Response({"detail": "ok"})
 
 

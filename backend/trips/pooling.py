@@ -2,21 +2,21 @@
 WR-17 ride pooling for shared corridors.
 
 Opt-in only (`shareable`). A request shares a yellow-yellow with at most one
-other rider (POOL_MAX_RIDERS = 2) when both:
+other passenger (POOL_MAX_PASSENGERS = 2) when both:
   - were requested within POOL_JOIN_WINDOW_MINUTES of each other,
   - are picked up within POOL_PICKUP_RADIUS_KM, and
   - are headed within POOL_DESTINATION_RADIUS_KM.
 
 Two ways to share:
-  1. Pair with another shareable rider who is *still searching* (the
+  1. Pair with another shareable passenger who is *still searching* (the
      top-of-the-hour rush). The first request's dispatch carries both; the new
-     rider waits on it. If it finds no driver, the waiting rider is dispatched
+     passenger waits on it. If it finds no driver, the waiting passenger is dispatched
      on their own. Nobody waits for a pool that never forms.
-  2. Join a group whose driver is already heading out, while neither rider
+  2. Join a group whose driver is already heading out, while neither passenger
      has been picked up yet (no surprise detours for someone on board).
 
-Fare split (PRD): the base fare is shared, and each rider pays the distance
-charge for their own leg. A rider never pays more than their solo fare, and
+Fare split (PRD): the base fare is shared, and each passenger pays the distance
+charge for their own leg. A passenger never pays more than their solo fare, and
 pays exactly the solo fare if nobody ends up sharing.
 """
 from decimal import Decimal
@@ -32,8 +32,8 @@ WAITING_FOR_PICKUP = [Trip.Status.MATCHED, Trip.Status.DRIVER_ARRIVING]
 ENDED = [Trip.Status.CANCELLED, Trip.Status.NO_DRIVERS_FOUND, Trip.Status.COMPLETED]
 
 
-def max_riders():
-    return getattr(settings, "POOL_MAX_RIDERS", 2)
+def max_passengers():
+    return getattr(settings, "POOL_MAX_PASSENGERS", 2)
 
 
 def _close(a_lat, a_lng, b_lat, b_lng, radius):
@@ -52,7 +52,7 @@ def compatible(a, b):
     )
 
 
-def _riders(group):
+def _passengers(group):
     return list(group.trips.exclude(status__in=ENDED).order_by("requested_at"))
 
 
@@ -60,17 +60,17 @@ def try_pool(trip):
     """Returns ("joined", driver), ("waiting", lead_trip) or None."""
     cutoff = timezone.now() - timezone.timedelta(minutes=settings.POOL_JOIN_WINDOW_MINUTES)
 
-    # 1. A driver already heading to a shareable rider nearby.
+    # 1. A driver already heading to a shareable passenger nearby.
     for group in PoolGroup.objects.filter(zone=trip.zone, status=PoolGroup.Status.OPEN,
                                           driver__isnull=False, created_at__gte=cutoff).order_by("created_at"):
         with transaction.atomic():
             locked = PoolGroup.objects.select_for_update().get(id=group.id)
             fresh = Trip.objects.select_for_update().get(id=trip.id)
-            riders = _riders(locked)
+            passengers = _passengers(locked)
             if (locked.status != PoolGroup.Status.OPEN or fresh.status != Trip.Status.REQUESTED
-                    or not riders or len(riders) >= max_riders()
-                    or any(r.status not in WAITING_FOR_PICKUP for r in riders)
-                    or not all(compatible(r, fresh) for r in riders)):
+                    or not passengers or len(passengers) >= max_passengers()
+                    or any(r.status not in WAITING_FOR_PICKUP for r in passengers)
+                    or not all(compatible(r, fresh) for r in passengers)):
                 continue
             fresh.pool_group, fresh.driver = locked, locked.driver
             fresh.status, fresh.matched_at = Trip.Status.MATCHED, timezone.now()
@@ -82,7 +82,7 @@ def try_pool(trip):
         trip.refresh_from_db()
         return ("joined", locked.driver)
 
-    # 2. Another shareable rider still searching for a driver.
+    # 2. Another shareable passenger still searching for a driver.
     counterparts = Trip.objects.filter(
         zone=trip.zone, shareable=True, status=Trip.Status.MATCHING, driver__isnull=True,
         requested_at__gte=cutoff, trip_type=Trip.Kind.RIDE,
@@ -94,8 +94,8 @@ def try_pool(trip):
             if lead.status != Trip.Status.MATCHING or lead.driver_id or fresh.status != Trip.Status.REQUESTED:
                 continue
             group = lead.pool_group or PoolGroup.objects.create(zone=lead.zone)
-            members = _riders(group) if lead.pool_group_id else [lead]
-            if len(members) >= max_riders() or not all(compatible(m, fresh) for m in members):
+            members = _passengers(group) if lead.pool_group_id else [lead]
+            if len(members) >= max_passengers() or not all(compatible(m, fresh) for m in members):
                 continue
             if not lead.pool_group_id:
                 lead.pool_group = group
@@ -114,7 +114,7 @@ def try_pool(trip):
 
 
 def on_accept(trip, driver):
-    """Inside accept_trip's transaction. Returns the other riders matched with this driver."""
+    """Inside accept_trip's transaction. Returns the other passengers matched with this driver."""
     joined = []
     if trip.pool_group_id:
         group = PoolGroup.objects.select_for_update().get(id=trip.pool_group_id)
@@ -135,14 +135,14 @@ def on_accept(trip, driver):
 
 
 def on_trip_ended(trip):
-    """A rider in a group cancelled or found no driver. Keep everyone else moving and
-    re-price, so a rider left alone pays their solo fare again (never more)."""
+    """A passenger in a group cancelled or found no driver. Keep everyone else moving and
+    re-price, so a passenger left alone pays their solo fare again (never more)."""
     if not trip.pool_group_id:
         return
     group = trip.pool_group
-    remaining = _riders(group)
+    remaining = _passengers(group)
     if group.driver_id is None:
-        # The trip carrying this group's dispatch is gone; waiting riders dispatch themselves.
+        # The trip carrying this group's dispatch is gone; waiting passengers dispatch themselves.
         from trips.services import _dispatch
 
         waiting = [r for r in remaining if r.status == Trip.Status.MATCHING and r.driver_id is None
@@ -156,14 +156,14 @@ def on_trip_ended(trip):
 
 
 def reprice(group):
-    """Base fare shared equally, each rider pays their own distance charge; never above solo."""
-    riders = _riders(group)
-    for r in riders:
+    """Base fare shared equally, each passenger pays their own distance charge; never above solo."""
+    passengers = _passengers(group)
+    for r in passengers:
         q = r.fare_quote
-        if len(riders) < 2:
+        if len(passengers) < 2:
             seat = None
         else:
-            pooled = (q.base_fare / len(riders)).quantize(Decimal("0.01")) + q.per_km_charge + q.surcharge - q.discount
+            pooled = (q.base_fare / len(passengers)).quantize(Decimal("0.01")) + q.per_km_charge + q.surcharge - q.discount
             seat = min(max(pooled, Decimal("0.00")), q.total)
         if r.pool_seat_fare != seat:
             r.pool_seat_fare = seat
@@ -176,24 +176,24 @@ def _announce_join(trip, driver):
 
     _broadcast_trip_update(trip)
     notify(trip.passenger, "Shared ride matched",
-           f"{driver.user.name or 'Your driver'} is picking up one other rider going your way.",
+           f"{driver.user.name or 'Your rider'} is picking up one other passenger going your way.",
            category="trip", link=f"/trip/{trip.id}")
-    notify(driver.user, "Second rider added",
-           f"Also pick up {(trip.passenger.name or 'a rider').split(' ')[0]} at {trip.pickup_label or 'a nearby pickup'}.",
+    notify(driver.user, "Second passenger added",
+           f"Also pick up {(trip.passenger.name or 'a passenger').split(' ')[0]} at {trip.pickup_label or 'a nearby pickup'}.",
            category="trip", link=f"/active-trip/{trip.id}")
 
 
-def ordered_stops(riders):
+def ordered_stops(passengers):
     """PRD: the driver sees both pickups then both drop-offs, in order, not one ambiguous trip.
     Pickups in request order; drop-offs nearest-first from the last pickup."""
-    pickups = [{"type": "pickup", "trip_id": str(r.id), "first_name": (r.passenger.name or "Rider").split(" ")[0],
+    pickups = [{"type": "pickup", "trip_id": str(r.id), "first_name": (r.passenger.name or "Passenger").split(" ")[0],
                 "label": r.pickup_label, "lat": str(r.pickup_lat), "lng": str(r.pickup_lng),
                 "fare": str(r.pool_seat_fare or r.fare_quote.total),
-                "done": r.status in (Trip.Status.IN_PROGRESS, Trip.Status.COMPLETED)} for r in riders]
-    last = riders[-1] if riders else None
-    drops = sorted(riders, key=lambda r: haversine_km(float(last.pickup_lat), float(last.pickup_lng),
+                "done": r.status in (Trip.Status.IN_PROGRESS, Trip.Status.COMPLETED)} for r in passengers]
+    last = passengers[-1] if passengers else None
+    drops = sorted(passengers, key=lambda r: haversine_km(float(last.pickup_lat), float(last.pickup_lng),
                                                        float(r.destination_lat), float(r.destination_lng)))
-    dropoffs = [{"type": "dropoff", "trip_id": str(r.id), "first_name": (r.passenger.name or "Rider").split(" ")[0],
+    dropoffs = [{"type": "dropoff", "trip_id": str(r.id), "first_name": (r.passenger.name or "Passenger").split(" ")[0],
                  "label": r.destination_label, "lat": str(r.destination_lat), "lng": str(r.destination_lng),
                  "fare": str(r.pool_seat_fare or r.fare_quote.total),
                  "done": r.status == Trip.Status.COMPLETED} for r in drops]
@@ -201,17 +201,17 @@ def ordered_stops(riders):
 
 
 def offer_legs(trip):
-    """For an offer that carries a waiting rider too: the whole sequence, so the driver knows it's two stops."""
+    """For an offer that carries a waiting passenger too: the whole sequence, so the driver knows it's two stops."""
     if not trip.pool_group_id:
         return None
-    riders = _riders(trip.pool_group)
-    if len(riders) < 2:
+    passengers = _passengers(trip.pool_group)
+    if len(passengers) < 2:
         return None
     # Offer shows what the driver would earn if both ride: shared-base pricing.
     shadow = []
-    for r in riders:
+    for r in passengers:
         q = r.fare_quote
-        r.pool_seat_fare = min((q.base_fare / len(riders)).quantize(Decimal("0.01")) + q.per_km_charge
+        r.pool_seat_fare = min((q.base_fare / len(passengers)).quantize(Decimal("0.01")) + q.per_km_charge
                                + q.surcharge - q.discount, q.total)
         shadow.append(r)
     return ordered_stops(shadow)
@@ -220,9 +220,9 @@ def offer_legs(trip):
 def pool_summary(trip, for_driver=False):
     if not trip.pool_group_id:
         return None
-    riders = _riders(trip.pool_group) or [trip]
+    passengers = _passengers(trip.pool_group) or [trip]
     info = {"pool_group": str(trip.pool_group_id), "open": trip.pool_group.status == PoolGroup.Status.OPEN,
-            "rider_count": len(riders)}
+            "passenger_count": len(passengers)}
     if for_driver:
-        info["stops"] = ordered_stops(riders)
+        info["stops"] = ordered_stops(passengers)
     return info

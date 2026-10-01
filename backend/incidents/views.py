@@ -86,7 +86,7 @@ class TripSOSView(APIView):
 class TripCheckinView(APIView):
     """POST /api/trips/:id/checkin {response: "fine" | "something_off", details?} — WR-18 post-trip check-in.
 
-    Separate from ratings, available to both the rider and the driver after a completed trip.
+    Separate from ratings, available to both the passenger and the driver after a completed trip.
     """
 
     permission_classes = [IsAuthenticated]

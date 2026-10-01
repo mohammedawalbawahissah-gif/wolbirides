@@ -12,7 +12,7 @@ class PromoError(ValueError):
 
 
 def compute_discount(promo, user, fare_total, destination=None, lock=False):
-    """Returns the GH₵ discount, or raises PromoError with a rider-friendly reason."""
+    """Returns the GH₵ discount, or raises PromoError with a passenger-friendly reason."""
     now = timezone.now()
     if not promo.active or (promo.valid_from and now < promo.valid_from) or (promo.valid_until and now > promo.valid_until):
         raise PromoError("That code isn't active right now.")

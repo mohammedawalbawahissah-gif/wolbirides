@@ -8,8 +8,8 @@ export const STORAGE_KEYS = {
 };
 
 export const COPY = {
-  signInTitle: "Welcome back, driver.",
+  signInTitle: "Welcome back, rider.",
   signInSubtitle: "Go online, accept rides, and get paid.",
-  signUpTitle: "Drive with WolbiRides.",
+  signUpTitle: "Earn with WolbiRides.",
   signUpSubtitle: "Sign up, then submit your licence and vehicle for verification.",
 };

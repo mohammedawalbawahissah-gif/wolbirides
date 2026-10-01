@@ -17,7 +17,7 @@ def expires_before_term(plan):
 
 def start_purchase(user, plan, payment_method="momo", acknowledged_short_expiry=False):
     """WR-22 guardrail: a bundle that expires before a full academic term can only be
-    bought after the rider has explicitly acknowledged the expiry date."""
+    bought after the passenger has explicitly acknowledged the expiry date."""
     if expires_before_term(plan) and not acknowledged_short_expiry:
         raise BundleError(
             f"This bundle expires {plan.valid_days} days after purchase, before the end of a term. "

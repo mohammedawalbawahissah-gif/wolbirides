@@ -22,13 +22,14 @@ interface SharedTripData {
 
 const STATUS_TEXT: Record<string, string> = {
   requested: "is booking a ride",
-  matching: "is waiting for a driver",
-  matched: "is waiting for their driver",
-  driver_arriving: "'s driver is arriving",
+  matching: "is waiting for a rider",
+  awaiting_assignment: "is having a courier arranged",
+  matched: "is waiting for their rider",
+  driver_arriving: "'s rider is arriving",
   in_progress: "is on the way",
   completed: "has arrived",
   cancelled: "'s trip was cancelled",
-  no_drivers_found: "couldn't find a driver",
+  no_drivers_found: "couldn't find a rider",
 };
 
 /** WR-18: public, no-login page for someone following a shared trip. */
@@ -69,7 +70,7 @@ export default function SharedTrip() {
       <p className="shared-trip-route">{data.pickup_label || "Pickup"} to {data.destination_label || "destination"}</p>
       {data.eta_minutes != null && (
         <p className="shared-trip-eta">
-          {data.status === "in_progress" ? "Arriving" : "Driver at pickup"} in about {data.eta_minutes} min
+          {data.status === "in_progress" ? "Arriving" : "Rider at pickup"} in about {data.eta_minutes} min
         </p>
       )}
 
@@ -84,7 +85,7 @@ export default function SharedTrip() {
       )}
 
       <TripMap pickup={destination} destination={destination} driver={data.driver_location} />
-      <p className="shared-trip-note">Updates every 10 seconds. In an emergency, call 112.</p>
+      <p className="shared-trip-note">In an emergency, call 112.</p>
     </main>
   );
 }

@@ -64,7 +64,6 @@ export default function Payouts() {
     <div>
       <PageHeader
         title="Payouts"
-        subtitle="Generated every Monday for MoMo-paid trips. Each payout needs your approval before money moves."
       />
 
       <div className="filter-row">
@@ -93,7 +92,7 @@ export default function Payouts() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Driver</th>
+                <th>Rider</th>
                 <th>Period</th>
                 <th>Trips</th>
                 <th>Amount</th>
@@ -105,7 +104,7 @@ export default function Payouts() {
               {payouts.map((p) => (
                 <tr key={p.id}>
                   <td>
-                    {p.driver_name || "Unnamed driver"}
+                    {p.driver_name || "Unnamed rider"}
                     <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{p.driver_phone}</div>
                   </td>
                   <td>{p.period_start} to {p.period_end}</td>

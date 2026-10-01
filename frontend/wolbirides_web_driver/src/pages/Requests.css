@@ -1,0 +1,6 @@
+.request-card { max-width: 420px; }
+.request-admin-tag {
+  display: inline-block; font-size: 12px; font-weight: 700; color: var(--navy-ink);
+  background: var(--gold-soft); border-radius: 999px; padding: 4px 10px; margin-bottom: 10px;
+}
+.request-timer { font-size: 13px; color: var(--ink-muted); margin: 8px 0 12px; text-align: center; }

@@ -25,7 +25,7 @@ export default function AppLayout() {
       <header className="topbar">
         <div className="topbar-inner">
           <NavLink to="/" className="topbar-brand">
-            <span className="brand-mark">WR</span>
+            <img src="/favicon.svg" alt="WolbiRides" className="brand-mark" />
             <span className="brand-name">WolbiRides</span>
           </NavLink>
 

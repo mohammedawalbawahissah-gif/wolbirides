@@ -26,8 +26,7 @@ export default function Fairness() {
 
   return (
     <div>
-      <PageHeader title="Dispatch fairness"
-        subtitle="Most offers go nearest-first. On a small share (FAIR_QUEUE_SHARE, 15%), the equally-close driver with the fewest trips this week goes first. Watch the extra pickup distance: that's the rider's cost." />
+      <PageHeader title="Dispatch fairness" />
       <div className="filter-row">
         <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
           <option value={7}>Last 7 days</option>
@@ -40,20 +39,20 @@ export default function Fairness() {
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
             <KpiCard label="Completed trips" value={String(report.summary.completed_trips)} />
-            <KpiCard label="Share taken by busiest 20% of drivers" value={`${Math.round(report.summary.top_20_percent_share * 100)}%`} />
-            <KpiCard label="Verified drivers with no trips" value={String(report.summary.drivers_with_no_trips)} />
-            <KpiCard label="Gini of trips per driver (0 = even)" value={report.summary.gini.toFixed(2)} />
-            <KpiCard label="p90 / p10 trips per driver" value={report.summary.p90_p10_ratio == null ? "—" : String(report.summary.p90_p10_ratio)} />
+            <KpiCard label="Share taken by busiest 20% of riders" value={`${Math.round(report.summary.top_20_percent_share * 100)}%`} />
+            <KpiCard label="Verified riders with no trips" value={String(report.summary.drivers_with_no_trips)} />
+            <KpiCard label="Gini of trips per rider (0 = even)" value={report.summary.gini.toFixed(2)} />
+            <KpiCard label="p90 / p10 trips per rider" value={report.summary.p90_p10_ratio == null ? "—" : String(report.summary.p90_p10_ratio)} />
             <KpiCard label="Offers made by the fairness floor"
               value={`${report.summary.fair_queue_offers} (${Math.round(report.summary.fair_queue_share_of_offers * 100)}%)`} />
             <KpiCard label="Extra pickup distance per fairness offer"
               value={`${(report.summary.fair_queue_avg_extra_km * 1000).toFixed(0)} m`}
               tone={report.summary.fair_queue_avg_extra_km > 0.4 ? "warning" : "neutral"} />
           </div>
-          {report.drivers.length === 0 ? <EmptyState message="No verified drivers yet." /> : (
+          {report.drivers.length === 0 ? <EmptyState message="No verified riders yet." /> : (
             <div className="panel">
               <table className="data-table">
-                <thead><tr><th>Driver</th><th>Offers</th><th>Accepted</th><th>Completed</th><th>Fares</th></tr></thead>
+                <thead><tr><th>Rider</th><th>Offers</th><th>Accepted</th><th>Completed</th><th>Fares</th></tr></thead>
                 <tbody>
                   {report.drivers.map((d) => (
                     <tr key={d.driver_id}>

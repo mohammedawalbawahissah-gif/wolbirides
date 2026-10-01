@@ -79,9 +79,9 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
     class Role(models.TextChoices):
         PASSENGER = "passenger", "Passenger"
-        DRIVER = "driver", "Driver"
+        DRIVER = "driver", "Rider"
         ADMIN = "admin", "Admin"
-        SUPPORT = "support", "Support Agent"
+        SUPPORT = "support", "Admin (support)"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     phone = models.CharField(max_length=64, unique=True, db_index=True)
@@ -109,6 +109,13 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
     class Meta:
         indexes = [models.Index(fields=["role", "is_active"])]
+
+    @property
+    def real_phone(self):
+        """A dialable number, or "" for accounts that only have a private placeholder
+        (email-only signups store "email:<hash>", merged duplicates "merged:<...>")."""
+        p = self.phone or ""
+        return "" if p.startswith(("email:", "merged:")) else p
 
     def __str__(self):
         return f"{self.name or 'Unnamed'} ({self.phone})"

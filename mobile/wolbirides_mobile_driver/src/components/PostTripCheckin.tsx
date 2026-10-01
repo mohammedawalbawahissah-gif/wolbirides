@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import { colors, spacing, typography } from "../theme";
 import { Button, Card, TextField } from "./ui";
 
-/** WR-18: drivers face harassment too. Same post-trip check-in as riders, separate from ratings. */
+/** WR-18: drivers face harassment too. Same post-trip check-in as passengers, separate from ratings. */
 export default function PostTripCheckin({ tripId }: { tripId: string }) {
   const [state, setState] = useState<"ask" | "details" | "done">("ask");
   const [details, setDetails] = useState("");
@@ -33,7 +33,7 @@ export default function PostTripCheckin({ tripId }: { tripId: string }) {
         <>
           <TextField value={details} onChangeText={setDetails} placeholder="What happened? (optional)" multiline />
           <Button title="Send to safety team" variant="primary" onPress={() => send("something_off")} loading={busy} />
-          <Text style={typography.muted}>This goes to the WolbiRides safety team, not the rider. In danger now? Use SOS or call 112.</Text>
+          <Text style={typography.muted}>In danger now? Use SOS or call 112.</Text>
         </>
       )}
     </Card>

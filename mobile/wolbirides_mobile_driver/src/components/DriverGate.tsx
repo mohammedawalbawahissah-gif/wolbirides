@@ -4,6 +4,7 @@ import { api, type Driver } from "../api/client";
 import { colors } from "../theme";
 import ApplyScreen from "../screens/ApplyScreen";
 import PendingScreen from "../screens/PendingScreen";
+import DispatchLayer from "./DispatchLayer";
 
 interface DriverContextValue {
   driver: Driver;
@@ -50,5 +51,9 @@ export default function DriverGate({ children }: { children: ReactNode }) {
     return <PendingScreen licenceNumber={driver.licence_number} />;
   }
 
-  return <DriverContext.Provider value={{ driver, setDriver }}>{children}</DriverContext.Provider>;
+  return (
+    <DriverContext.Provider value={{ driver, setDriver }}>
+      <DispatchLayer driver={driver} onDriverChanged={load}>{children}</DispatchLayer>
+    </DriverContext.Provider>
+  );
 }

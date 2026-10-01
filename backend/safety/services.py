@@ -83,7 +83,7 @@ def public_trip_view(share):
         driver = trip.driver
         vehicle = driver.vehicles.filter(active=True).first()
         data["driver"] = {
-            "first_name": (driver.user.name or "Driver").split(" ")[0],
+            "first_name": (driver.user.name or "Rider").split(" ")[0],
             "photo": driver.user.profile_photo,
             "plate_number": vehicle.plate_number if vehicle else "",
             "vehicle_type": vehicle.get_vehicle_type_display() if vehicle else "",
@@ -92,7 +92,7 @@ def public_trip_view(share):
             try:
                 loc = get_driver_location_sync(str(driver.user_id))
             except Exception:
-                logger.warning("Driver location unavailable for share view (Redis down?)")
+                logger.warning("Rider location unavailable for share view (Redis down?)")
                 loc = None
             if loc:
                 data["driver_location"] = {"lat": loc["lat"], "lng": loc["lng"]}

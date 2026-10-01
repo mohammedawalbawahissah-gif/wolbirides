@@ -116,9 +116,6 @@ export function CheckInPrompt({ tripId, refreshKey }: { tripId: string; refreshK
   return (
     <View style={styles.checkIn} accessibilityRole="alert">
       <Text style={styles.checkInTitle}>Are you OK?</Text>
-      <Text style={styles.checkInBody}>
-        Your trip is taking longer than expected. If we don't hear back in a few minutes, our team will call you.
-      </Text>
       {error && <ErrorBanner message={error} />}
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
         <Button title="I'm OK" variant="success" onPress={() => answer("ok")} disabled={busy} style={{ flex: 1 }} />
@@ -223,9 +220,6 @@ export function SavedPlacesAndRegularRides() {
 
       <Card style={styles.section}>
         <Text style={typography.h2}>Regular rides</Text>
-        <Text style={[typography.muted, { marginBottom: spacing.sm }]}>
-          Get a reminder before rides you take every week. We never book for you.
-        </Text>
         {rides?.map((r) => (
           <View key={r.id} style={styles.row}>
             <View style={{ flex: 1 }}>
@@ -304,7 +298,6 @@ export function NotificationPrefsCard() {
   return (
     <Card style={styles.section}>
       <Text style={typography.h2}>Notifications</Text>
-      <Text style={[typography.muted, { marginBottom: spacing.sm }]}>Trip updates and safety alerts always come through.</Text>
       {prefs?.map((p) => (
         <View key={p.category} style={styles.row}>
           <Text style={[styles.rowTitle, { flex: 1 }]}>{p.label}</Text>
@@ -371,7 +364,7 @@ export function PostTripCheckin({ tripId }: { tripId: string }) {
           <TextField value={details} onChangeText={setDetails} placeholder="What happened? (optional)" multiline />
           <Button title="Send to safety team" variant="primary" onPress={() => send("something_off")} loading={busy} />
           <Text style={[typography.muted, { marginTop: spacing.xs }]}>
-            This goes to the WolbiRides safety team, not the driver. If you're in danger now, call 112.
+            If you're in danger now, call 112.
           </Text>
         </>
       )}
@@ -379,10 +372,10 @@ export function PostTripCheckin({ tripId }: { tripId: string }) {
   );
 }
 
-/** WR-19: no matching driver is free. The rider decides; nobody is silently reassigned. */
+/** WR-19: no matching driver is free. The passenger decides; nobody is silently reassigned. */
 export function PreferenceDecision({ tripId, status, onDecided }: { tripId: string; status?: string; onDecided: () => void }) {
   const [busy, setBusy] = useState(false);
-  if (status !== "awaiting_rider" && status !== "keep_waiting") return null;
+  if (status !== "awaiting_passenger" && status !== "keep_waiting") return null;
   async function decide(decision: "any_driver" | "keep_waiting") {
     setBusy(true);
     try {
@@ -395,12 +388,7 @@ export function PreferenceDecision({ tripId, status, onDecided }: { tripId: stri
   return (
     <View style={styles.checkIn} accessibilityRole="alert">
       <Text style={styles.checkInTitle}>
-        {status === "keep_waiting" ? "Still looking for a matching driver" : "No matching driver is free right now"}
-      </Text>
-      <Text style={styles.checkInBody}>
-        {status === "keep_waiting"
-          ? "We'll keep checking for a few minutes. You can switch to the next available driver any time."
-          : "Take the next available driver now, or keep waiting for one who matches your preference."}
+        {status === "keep_waiting" ? "Still looking for a matching rider" : "No matching rider is free right now"}
       </Text>
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
         <Button title="Next available" variant="gold" onPress={() => decide("any_driver")} disabled={busy} style={{ flex: 1 }} />
@@ -414,7 +402,7 @@ export function PreferenceDecision({ tripId, status, onDecided }: { tripId: stri
 
 // ---------- WR-19: default ride preferences (same fields as web) ----------
 const PREF_LABELS: Record<string, string> = {
-  prefer_previous_drivers: "Prefer drivers I've ridden with",
+  prefer_previous_drivers: "Prefer riders I've ridden with",
   quiet_ride: "Quiet ride",
   needs_luggage_space: "Space for luggage",
   needs_accessibility_help: "Help getting in and out",
@@ -442,12 +430,9 @@ export function RidePreferencesCard() {
   return (
     <Card style={styles.section}>
       <Text style={typography.h2}>Ride preferences</Text>
-      <Text style={[typography.muted, { marginBottom: spacing.sm }]}>
-        Optional. Only our matching uses these; drivers never see them. If no matching driver is free, we'll ask you first.
-      </Text>
-      <Text style={styles.label}>Driver preference</Text>
+      <Text style={styles.label}>Rider preference</Text>
       <View style={styles.chips}>
-        {([["", "No preference"], ["female", "Female driver"], ["male", "Male driver"]] as const).map(([value, label]) => {
+        {([["", "No preference"], ["female", "Female rider"], ["male", "Male rider"]] as const).map(([value, label]) => {
           const on = (prefs.preferred_driver_gender || "") === value;
           return (
             <TouchableOpacity key={value} style={[styles.chip, on && styles.chipOn]} onPress={() => save({ preferred_driver_gender: value })}
@@ -532,7 +517,6 @@ export function BundlesCard() {
   return (
     <Card style={styles.section}>
       <Text style={typography.h2}>Ride bundles</Text>
-      <Text style={[typography.muted, { marginBottom: spacing.sm }]}>Pay once for several rides. Used automatically, oldest first.</Text>
       {visible.map((b) => (
         <View key={b.id} style={styles.row}>
           <View style={{ flex: 1 }}>

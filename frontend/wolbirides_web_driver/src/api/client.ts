@@ -11,6 +11,16 @@ export { WS_BASE_URL };
 
 export const api = axios.create({ baseURL: BASE_URL });
 
+/** What to tell a person when a request fails. "No response at all" is a connection problem, never a wrong password. */
+export function requestErrorMessage(err: any, fallback: string): string {
+  if (!err?.response) return "Can't reach the WolbiRides server. Check your connection and that the backend is running.";
+  const { status, data } = err.response;
+  if (status >= 500) return "The server had a problem. Try again in a moment.";
+  if (data && typeof data === "object") return data.detail || fallback;
+  return `The server sent an unexpected reply (${status}). Check that the app points at the WolbiRides backend.`;
+}
+
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("wolbirides_driver_access");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -137,6 +147,11 @@ export interface Driver {
   has_luggage_space?: boolean;
   accessibility_trained?: boolean;
   accepts_deliveries?: boolean;
+  licence_document?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  payout_phone?: string;
+  payout_provider?: "momo" | "hubtel";
 }
 
 export interface FareQuote {
@@ -183,11 +198,15 @@ export interface Trip {
   pool_info?: {
     pool_group: string;
     open: boolean;
-    rider_count: number;
+    passenger_count: number;
     stops?: { type: "pickup" | "dropoff"; trip_id: string; first_name: string; label: string; done: boolean }[];
   } | null;
   delivery?: {
+    delivery_subtype: "parcel" | "errand" | "vendor_order";
+    sender_name: string; sender_phone: string;
     recipient_name: string; recipient_phone: string; package_description: string; package_size: string;
+    task_description: string; spend_limit: string | null;
+    vendor: { id: string; name: string; location_label: string; phone: string } | null;
     picked_up_at: string | null;
   } | null;
 }
@@ -214,9 +233,15 @@ export interface RideOffer {
   destination_label: string;
   fare_estimate: string;
   timeout_seconds: number;
+  expires_at?: string;
+  admin_offer?: boolean;
   kind?: "ride" | "delivery";
   trip_type?: "ride" | "delivery";
+  delivery_subtype?: "parcel" | "errand" | "vendor_order";
   package_description?: string;
   package_size?: string;
+  task_description?: string;
+  spend_limit?: string | null;
+  vendor_name?: string;
   pool_legs?: { type: "pickup" | "dropoff"; trip_id: string; first_name: string; label: string }[];
 }

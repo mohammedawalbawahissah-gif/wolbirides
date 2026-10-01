@@ -4,6 +4,12 @@ from drivers.models import Driver, Vehicle
 
 
 @transaction.atomic
+def _normalize(phone):
+    from accounts.services import normalize_phone
+
+    return normalize_phone(phone)
+
+
 def submit_driver_application(user, data):
     """
     Creates the Driver + Vehicle records in pending status. Verification
@@ -26,6 +32,8 @@ def submit_driver_application(user, data):
             "licence_document": data.get("licence_document", ""),
             "emergency_contact_name": data.get("emergency_contact_name", ""),
             "emergency_contact_phone": data.get("emergency_contact_phone", ""),
+            "payout_phone": _normalize(data["payout_phone"]) if data.get("payout_phone") else "",
+            "payout_provider": data.get("payout_provider") or Driver.PayoutProvider.MOMO,
             "verification_status": Driver.VerificationStatus.PENDING,
         },
     )
@@ -43,7 +51,7 @@ def submit_driver_application(user, data):
 def set_driver_online(driver, is_online, zone=None):
     """Enforces the WR-07.2 verification gate before a driver can receive requests."""
     if is_online and driver.verification_status != Driver.VerificationStatus.VERIFIED:
-        raise PermissionError("Driver is not verified and cannot go online")
+        raise PermissionError("Rider is not verified and cannot go online")
     driver.is_online = is_online
     if zone is not None:
         driver.current_zone = zone
@@ -71,10 +79,10 @@ def take_driver_offline(driver, reason="offline"):
     try:
         remove_driver_location_sync(str(driver.user_id), str(driver.current_zone_id) if driver.current_zone_id else None)
     except Exception:
-        logging.getLogger(__name__).warning("Couldn't clear live location for driver %s", driver.id)
+        logging.getLogger(__name__).warning("Couldn't clear live location for rider %s", driver.id)
     try:
         async_to_sync(get_channel_layer().group_send)(
             driver_group_name(str(driver.user_id)), {"type": "force_offline", "reason": reason}
         )
     except Exception:
-        logging.getLogger(__name__).warning("Couldn't notify driver %s to go offline", driver.id)
+        logging.getLogger(__name__).warning("Couldn't notify rider %s to go offline", driver.id)

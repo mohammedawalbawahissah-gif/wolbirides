@@ -48,6 +48,17 @@ class Driver(TimeStampedModel):
     emergency_contact_name = models.CharField(max_length=150, blank=True)
     emergency_contact_phone = models.CharField(max_length=20, blank=True)
 
+    # A rider's account phone doubles as their login and their contact number by default. Some
+    # riders register their mobile money wallet on a different SIM than the one they use day to
+    # day, so payouts need their own destination, chosen separately — never assumed from login.
+    class PayoutProvider(models.TextChoices):
+        MOMO = "momo", "MTN MoMo"
+        HUBTEL = "hubtel", "Hubtel"
+
+    payout_phone = models.CharField(max_length=20, blank=True,
+                                    help_text="Where payouts are sent. Blank falls back to the account phone.")
+    payout_provider = models.CharField(max_length=10, choices=PayoutProvider.choices, default=PayoutProvider.MOMO)
+
     class Meta:
         indexes = [
             models.Index(fields=["verification_status", "is_online"]),
@@ -63,8 +74,13 @@ class Driver(TimeStampedModel):
             and self.current_zone_id is not None
         )
 
+    def payout_destination(self):
+        """(phone, provider) money actually goes to — payout_phone if the rider set one, else
+        their account phone. Never blank: the account phone is always a real number."""
+        return (self.payout_phone or self.user.real_phone, self.payout_provider)
+
     def __str__(self):
-        return f"Driver<{self.user.phone}>"
+        return f"Rider<{self.user.phone}>"
 
 
 class Vehicle(TimeStampedModel):

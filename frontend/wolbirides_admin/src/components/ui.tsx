@@ -8,6 +8,7 @@ const STATUS_TONES: Record<string, "success" | "danger" | "warning" | "neutral">
   matched: "success",
   in_progress: "warning",
   matching: "warning",
+  awaiting_assignment: "warning",
   driver_arriving: "warning",
   investigating: "warning",
   pending: "warning",

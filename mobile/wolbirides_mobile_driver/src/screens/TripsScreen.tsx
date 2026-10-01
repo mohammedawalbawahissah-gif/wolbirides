@@ -19,7 +19,7 @@ export default function TripsScreen() {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={typography.h1}>Your trips</Text>
-        <Text style={typography.muted}>Every ride you've accepted.</Text>
+
       </View>
 
       {trips == null && <EmptyState message="Loading…" />}

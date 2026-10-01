@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../auth/AuthContext";
 import { COPY } from "../appConfig";
+import PasswordField from "../components/PasswordField";
 import { Button, ErrorBanner, FieldLabel, TextField } from "../components/ui";
 import type { AuthStackScreenProps } from "../navigation/types";
 import { authStyles as styles } from "./SignInScreen";
@@ -57,9 +58,8 @@ export default function SignUpScreen({ navigation }: AuthStackScreenProps<"SignU
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <View style={styles.hero}>
-          <View style={styles.logoMark}><Text style={styles.logoMarkText}>WR</Text></View>
-          <Text style={styles.heroTitle}>{COPY.signUpTitle}</Text>
-          <Text style={styles.heroSubtitle}>{COPY.signUpSubtitle}</Text>
+          <Image source={require("../../assets/logo-mark.png")} style={styles.logoMark} />
+          <Text style={styles.heroName}>WolbiRides</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.formArea} keyboardShouldPersistTaps="handled">
@@ -71,7 +71,7 @@ export default function SignUpScreen({ navigation }: AuthStackScreenProps<"SignU
               <TextField value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address"
                 autoCapitalize="none" autoComplete="email" />
               <FieldLabel>Password</FieldLabel>
-              <TextField value={password} onChangeText={setPassword} placeholder="At least 8 characters" secureTextEntry
+              <PasswordField value={password} onChangeText={setPassword} placeholder="At least 8 characters"
                 autoComplete="new-password" />
               {error && <ErrorBanner message={error} />}
               <Button title={busy ? "Sending code…" : "Send verification code"} onPress={handleSendCode}

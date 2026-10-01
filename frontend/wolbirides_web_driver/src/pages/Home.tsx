@@ -11,6 +11,7 @@ export default function Home() {
   const [zone, setZone] = useState<ServiceZone | null>(null);
   const [zonesLoaded, setZonesLoaded] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [savingDeliveries, setSavingDeliveries] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,6 +53,19 @@ export default function Home() {
     return <div className="empty-state">Your account isn't verified yet — you can't go online until ops approves your application.</div>;
   }
 
+  async function toggleDeliveries() {
+    setSavingDeliveries(true);
+    setError(null);
+    try {
+      const { data } = await api.patch("/drivers/me", { accepts_deliveries: !driver.accepts_deliveries });
+      setDriver(data);
+    } catch {
+      setError("Couldn't update that. Try again.");
+    } finally {
+      setSavingDeliveries(false);
+    }
+  }
+
   return (
     <div>
       <div className="page-heading">
@@ -88,15 +102,26 @@ export default function Home() {
             </button>
           </div>
 
+          <div className={"card status-card " + (driver.accepts_deliveries ? "status-card-online" : "")} style={{ marginTop: 12 }}>
+            <div className="status-label">{driver.accepts_deliveries ? "Taking deliveries" : "Not taking deliveries"}</div>
+            <button
+              className={"toggle-switch " + (driver.accepts_deliveries ? "toggle-switch-on" : "")}
+              onClick={toggleDeliveries}
+              disabled={savingDeliveries}
+              role="switch"
+              aria-checked={!!driver.accepts_deliveries}
+              aria-label="Take deliveries"
+            >
+              <span className="toggle-knob" />
+            </button>
+          </div>
+
           {error && <div className="auth-error">{error}</div>}
 
           {!driver.is_online && (
             <div className="card drive-hint-card">
               <h2>Ready to start earning?</h2>
-              <p>
-                Go online to start receiving ride requests in {zone?.name ?? "your zone"}. Keep this
-                tab open and location sharing turned on while you're online.
-              </p>
+              <p>Keep this tab open and location sharing turned on while you're online.</p>
               <button className="btn btn-gold btn-block" onClick={toggleOnline} disabled={toggling || !zone}>
                 {toggling ? "Going online…" : "Go online"}
               </button>

@@ -7,7 +7,7 @@ import { useToast } from "../components/Toast";
 import "../components/authForm.css";
 import "./Apply.css";
 
-const STEPS = ["Licence", "Vehicle", "Contact & review"];
+const STEPS = ["Licence", "Vehicle", "Payout", "Review"];
 
 export default function Apply({ onApplied }: { onApplied: () => void }) {
   const toast = useToast();
@@ -23,6 +23,8 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
 
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
+  const [payoutProvider, setPayoutProvider] = useState<"momo" | "hubtel">("momo");
+  const [payoutPhone, setPayoutPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +54,8 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
         vehicle_registration_document: vehicleRegDocument || undefined,
         emergency_contact_name: emergencyName,
         emergency_contact_phone: emergencyPhone,
+        payout_provider: payoutProvider,
+        payout_phone: payoutPhone.trim() || undefined,
       });
       toast.show("Application submitted — ops will review your documents.", "success");
       onApplied();
@@ -65,11 +69,7 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
   return (
     <OnboardingLayout>
       <div className="page-heading">
-        <h1>Apply to drive</h1>
-        <p>
-          Founding drivers get priority ride access and reduced platform fees (WR-07.1). Ops
-          reviews your documents before you can go online.
-        </p>
+        <h1>Apply to become a rider</h1>
       </div>
 
       <OnboardingStepper steps={STEPS} current={step} />
@@ -98,7 +98,6 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
             <FileDrop
               kind="licence_document"
               label="Photo of your licence"
-              hint="A clear photo or scan — ops uses this to verify you before your first ride."
               value={licenceDocument}
               onChange={setLicenceDocument}
             />
@@ -124,7 +123,6 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
             <FileDrop
               kind="vehicle_photo"
               label="Vehicle photo"
-              hint="A clear side-on photo showing the yellow-yellow paint and plate."
               value={vehiclePhoto}
               onChange={setVehiclePhoto}
             />
@@ -144,6 +142,26 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
         )}
 
         {step === 2 && (
+          <form onSubmit={next}>
+            <label className="field-label" htmlFor="payout-provider">Get paid by</label>
+            <select id="payout-provider" className="field-input" value={payoutProvider}
+              onChange={(e) => setPayoutProvider(e.target.value as "momo" | "hubtel")}>
+              <option value="momo">MTN MoMo</option>
+              <option value="hubtel">Hubtel</option>
+            </select>
+            <label className="field-label" htmlFor="payout-phone">Number to pay out to (optional)</label>
+            <input id="payout-phone" className="field-input" inputMode="tel" placeholder="Defaults to your account phone"
+              value={payoutPhone} onChange={(e) => setPayoutPhone(e.target.value)} />
+            <p className="opt-note">Only if your mobile money wallet is on a different number from your account. Leave it blank to use the number you signed up with.</p>
+
+            <div className="apply-step-actions">
+              <button type="button" className="btn btn-ghost" onClick={back}>Back</button>
+              <button className="btn btn-gold" type="submit">Continue</button>
+            </div>
+          </form>
+        )}
+
+        {step === 3 && (
           <form onSubmit={handleSubmit}>
             <label className="field-label" htmlFor="ename">Emergency contact name</label>
             <input
@@ -169,6 +187,10 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
                 <strong>
                   {[licenceDocument, vehiclePhoto, vehicleRegDocument].filter(Boolean).length} of 3 uploaded
                 </strong>
+              </div>
+              <div className="apply-review-row">
+                <span>Paid by</span>
+                <strong>{payoutProvider === "momo" ? "MTN MoMo" : "Hubtel"}{payoutPhone.trim() ? ` · ${payoutPhone.trim()}` : " · your account phone"}</strong>
               </div>
             </div>
 

@@ -9,7 +9,7 @@ export default function DriverCard({ driver }: { driver: TripDriverBrief }) {
   const initials = (driver.name || "WR").split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   const photo = driver.profile_photo || driver.vehicle?.photo;
   return (
-    <View style={styles.card} accessible accessibilityLabel={`Your driver ${driver.name}, ${driver.vehicle?.plate_number ?? ""}`}>
+    <View style={styles.card} accessible accessibilityLabel={`Your rider ${driver.name}, ${driver.vehicle?.plate_number ?? ""}`}>
       <View>
         {photo ? <Image source={{ uri: photo }} style={styles.photo} /> : (
           <View style={[styles.photo, styles.placeholder]}><Text style={styles.initials}>{initials}</Text></View>
@@ -18,7 +18,7 @@ export default function DriverCard({ driver }: { driver: TripDriverBrief }) {
       </View>
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={styles.name}>{driver.name || "Your driver"}</Text>
+          <Text style={styles.name}>{driver.name || "Your rider"}</Text>
           <Text style={styles.rating}>★ {Number(driver.rating).toFixed(1)}</Text>
         </View>
         <Text style={styles.vehicle}>
@@ -28,7 +28,7 @@ export default function DriverCard({ driver }: { driver: TripDriverBrief }) {
       </View>
       {!!driver.phone && (
         <TouchableOpacity style={styles.call} onPress={() => Linking.openURL(`tel:${driver.phone}`)}
-          accessibilityRole="button" accessibilityLabel="Call driver">
+          accessibilityRole="button" accessibilityLabel="Call rider">
           <Text style={{ fontSize: 18 }}>☎</Text>
         </TouchableOpacity>
       )}

@@ -21,7 +21,6 @@ export default function HistoryScreen({ navigation }: MainTabScreenProps<"Histor
     <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={typography.h1}>Your rides</Text>
-        <Text style={typography.muted}>Past trips and receipts.</Text>
       </View>
 
       {trips == null && <EmptyState message="Loading…" />}
@@ -55,14 +54,17 @@ export default function HistoryScreen({ navigation }: MainTabScreenProps<"Histor
               <Text style={styles.fare}>
                 {item.fare_final ? `GH₵${item.fare_final}` : item.fare_quote ? `GH₵${item.fare_quote.total}` : "—"}
               </Text>
-              {/* WR-13: one-tap re-request. Pre-fills the route; the rider still confirms. */}
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ride again"
-                onPress={() => navigation.navigate("Ride", { rebook: {
-                  pickup: { lat: Number(item.pickup_lat), lng: Number(item.pickup_lng), label: item.pickup_label },
-                  destination: { lat: Number(item.destination_lat), lng: Number(item.destination_lng), label: item.destination_label },
-                } })}
+              {/* WR-13: one-tap re-request. Pre-fills the route; the passenger still confirms. */}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={item.trip_type === "delivery" ? "Send again" : "Ride again"}
+                onPress={() => navigation.navigate("BookRide", {
+                  initialKind: item.trip_type === "delivery" ? "delivery" : "ride",
+                  rebook: {
+                    pickup: { lat: Number(item.pickup_lat), lng: Number(item.pickup_lng), label: item.pickup_label },
+                    destination: { lat: Number(item.destination_lat), lng: Number(item.destination_lng), label: item.destination_label },
+                  },
+                })}
                 style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: "#C9A227" }}>
-                <Text style={{ fontWeight: "700", fontSize: 13 }}>Ride again</Text>
+                <Text style={{ fontWeight: "700", fontSize: 13 }}>{item.trip_type === "delivery" ? "Send again" : "Ride again"}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

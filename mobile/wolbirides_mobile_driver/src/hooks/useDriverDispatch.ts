@@ -2,10 +2,10 @@ import { getAccessToken } from "../tokenStore";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { WS_BASE_URL, type RideOffer } from "../api/client";
+import { api, WS_BASE_URL, type RideOffer } from "../api/client";
 
 // The server says how hard to track (see backend trips/consumers.py): precise and
-// frequent while heading to or carrying a rider; lighter while waiting for work,
+// frequent while heading to or carrying a passenger; lighter while waiting for work,
 // which is most of a shift and the biggest battery cost on budget Android phones.
 type TrackingMode = "active" | "idle";
 const TRACKING: Record<TrackingMode, { accuracy: Location.Accuracy; timeInterval: number; distanceInterval: number }> = {
@@ -86,7 +86,7 @@ export function useDriverDispatch(zoneId: string | null, online: boolean, onForc
             ...settings,
             showsBackgroundLocationIndicator: true,
             foregroundService: {
-              notificationTitle: "WolbiRides Driver",
+              notificationTitle: "WolbiRides Rider",
               notificationBody: "Sharing your location while you're online",
             },
           });
@@ -200,6 +200,19 @@ export function useDriverDispatch(zoneId: string | null, online: boolean, onForc
       wsRef.current?.close();
     };
   }, [online, zoneId]);
+
+  useEffect(() => {
+    if (!online) return;
+    let cancelled = false;
+    function poll() {
+      api.get<RideOffer | null>("/drivers/me/current-offer").then(({ data }) => {
+        if (!cancelled && data) setOffer((current) => current ?? data);
+      }).catch(() => {});
+    }
+    poll();
+    const id = setInterval(poll, 20000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [online]);
 
   return { connected, offer, locationError, backgroundModeActive, clearOffer, mode };
 }

@@ -70,12 +70,11 @@ export default function Incidents() {
     <div>
       <PageHeader
         title="Incidents"
-        subtitle="Severity levels follow WR-06.3 — P0/P1 automatically suspend the involved driver pending review."
       />
 
       {openSOS.length > 0 && (
         <div className="sos-alert-banner" role="alert">
-          <strong>{openSOS.length} open SOS alert{openSOS.length === 1 ? "" : "s"}.</strong> Call the rider or driver now,
+          <strong>{openSOS.length} open SOS alert{openSOS.length === 1 ? "" : "s"}.</strong> Call the passenger or rider now,
           and escalate to 112 if you can't reach them.
         </div>
       )}

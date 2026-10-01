@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { WS_BASE_URL, type RideOffer } from "../api/client";
+import { api, WS_BASE_URL, type RideOffer } from "../api/client";
 
 // The server says how hard to track (see trips/consumers.py): precise and frequent
-// while heading to or carrying a rider, lighter while waiting for work.
+// while heading to or carrying a passenger, lighter while waiting for work.
 const PING_INTERVAL_MS = { active: 5000, idle: 15000 } as const;
 type TrackingMode = keyof typeof PING_INTERVAL_MS;
 
@@ -119,7 +119,7 @@ export function useDriverDispatch(zoneId: string | null, online: boolean, onForc
   }, [online, zoneId]);
 
   // GPS runs separately so a tracking-mode change only restarts the location watch,
-  // never the socket. High accuracy only while a rider is waiting or on board.
+  // never the socket. High accuracy only while a passenger is waiting or on board.
   useEffect(() => {
     if (!online || !zoneId) return;
     if (!("geolocation" in navigator)) {
@@ -139,6 +139,19 @@ export function useDriverDispatch(zoneId: string | null, online: boolean, onForc
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
     };
   }, [online, zoneId, mode]);
+
+  useEffect(() => {
+    if (!online) return;
+    let cancelled = false;
+    function poll() {
+      api.get<RideOffer | null>("/drivers/me/current-offer").then(({ data }) => {
+        if (!cancelled && data) setOffer((current) => current ?? data);
+      }).catch(() => {});
+    }
+    poll();
+    const id = window.setInterval(poll, 20000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [online]);
 
   return { connected, offer, locationError, clearOffer, mode };
 }

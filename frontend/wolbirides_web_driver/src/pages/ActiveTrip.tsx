@@ -1,7 +1,7 @@
 import SOSButton from "../components/SOSButton";
 import DriverPaymentPanel from "../components/DriverPaymentPanel";
 import PostTripCheckin from "../components/PostTripCheckin";
-import RateRider from "../components/RateRider";
+import RatePassenger from "../components/RatePassenger";
 import SupportCard from "../components/SupportCard";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -31,7 +31,7 @@ export default function ActiveTrip() {
   }
 
   useEffect(load, [tripId]);
-  // WR-17: while a shared ride is still open, new riders can join; refresh to show them.
+  // WR-17: while a shared ride is still open, new passengers can join; refresh to show them.
   useEffect(() => {
     if (!trip?.pool_info?.open) return;
     const id = window.setInterval(load, 15000);
@@ -73,7 +73,7 @@ export default function ActiveTrip() {
     if (!tripId) return;
     setBusy(true);
     try {
-      await api.post(`/trips/${tripId}/cancel`, { reason: "Driver cancelled" });
+      await api.post(`/trips/${tripId}/cancel`, { reason: "Rider cancelled" });
       navigate("/", { replace: true });
     } finally {
       setBusy(false);
@@ -90,7 +90,7 @@ export default function ActiveTrip() {
         <div className="topbar-inner">
           <Link to="/" className="topbar-brand">
             <span className="brand-mark">WR</span>
-            <span className="brand-name">WolbiRides Driver</span>
+            <span className="brand-name">WolbiRides Rider</span>
           </Link>
         </div>
       </header>
@@ -123,7 +123,7 @@ export default function ActiveTrip() {
             <aside className="active-trip-side">
               {trip.pool_info?.stops && trip.pool_info.stops.length > 2 && (
                 <div className="card" style={{ marginBottom: 16, borderLeft: "4px solid var(--gold)" }}>
-                  <h2 className="side-card-title">Shared ride: {trip.pool_info.rider_count} riders, in this order</h2>
+                  <h2 className="side-card-title">Shared ride: {trip.pool_info.passenger_count} passengers, in this order</h2>
                   <ol style={{ margin: 0, paddingLeft: 20 }}>
                     {trip.pool_info.stops.map((stop, idx) => (
                       <li key={`${stop.type}-${stop.trip_id}`} style={{ padding: "6px 0",
@@ -147,7 +147,26 @@ export default function ActiveTrip() {
                 <div className="trip-route-row"><span className="trip-dot trip-dot-dest" /> {trip.destination_label || "Destination"}</div>
                 {trip.delivery && (
                   <div style={{ margin: "12px 0", padding: 12, borderRadius: 8, background: "var(--warning-bg)", fontSize: 13.5 }}>
-                    <div><strong>Package:</strong> {trip.delivery.package_description} ({trip.delivery.package_size})</div>
+                    {trip.delivery.delivery_subtype === "parcel" && (
+                      <div><strong>Package:</strong> {trip.delivery.package_description} ({trip.delivery.package_size})</div>
+                    )}
+                    {trip.delivery.delivery_subtype === "errand" && (
+                      <div><strong>Errand:</strong> {trip.delivery.task_description}</div>
+                    )}
+                    {trip.delivery.delivery_subtype === "vendor_order" && (
+                      <>
+                        {trip.delivery.vendor && (
+                          <div><strong>Vendor:</strong> {trip.delivery.vendor.name}
+                            {trip.delivery.vendor.location_label ? `, ${trip.delivery.vendor.location_label}` : ""}</div>
+                        )}
+                        <div><strong>Order:</strong> {trip.delivery.task_description}</div>
+                      </>
+                    )}
+                    {trip.delivery.spend_limit && <div><strong>Spend up to:</strong> GH₵{trip.delivery.spend_limit}</div>}
+                    {trip.delivery.sender_name && (
+                      <div><strong>Collect from:</strong> {trip.delivery.sender_name}{" "}
+                        {trip.delivery.sender_phone && <a href={`tel:${trip.delivery.sender_phone}`}>{trip.delivery.sender_phone}</a>}</div>
+                    )}
                     <div><strong>Deliver to:</strong> {trip.delivery.recipient_name}{" "}
                       <a href={`tel:${trip.delivery.recipient_phone}`}>{trip.delivery.recipient_phone}</a></div>
                   </div>
@@ -166,7 +185,7 @@ export default function ActiveTrip() {
                 <div className="active-trip-actions">
                   {(trip.status === "matched" || trip.status === "driver_arriving") && !isDelivery && (
                     <button className="btn btn-gold btn-block" disabled={busy} onClick={() => act("start")}>
-                      {busy ? "Starting…" : "Start trip (rider on board)"}
+                      {busy ? "Starting…" : "Start trip (passenger on board)"}
                     </button>
                   )}
                   {(trip.status === "matched" || trip.status === "driver_arriving") && isDelivery && (
@@ -200,7 +219,7 @@ export default function ActiveTrip() {
                   </button>
 
                   {["matched", "driver_arriving", "in_progress"].includes(trip.status) && <SOSButton tripId={trip.id} />}
-                {trip.status === "completed" && <RateRider tripId={trip.id} alreadyRated={trip.rated_by_me} />}
+                {trip.status === "completed" && <RatePassenger tripId={trip.id} alreadyRated={trip.rated_by_me} />}
                 {trip.status === "completed" && <PostTripCheckin tripId={trip.id} />}
                 {trip.status === "completed" && (
                   <details style={{ marginTop: 12 }}>

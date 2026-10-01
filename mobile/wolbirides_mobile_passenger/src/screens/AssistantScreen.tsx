@@ -16,13 +16,13 @@ interface DraftTrip {
 interface ChatMessage { role: "user" | "assistant"; content: string; draft?: DraftTrip }
 
 const GREETING = ROLE === "driver"
-  ? "Hi! Ask me about going online, payouts, deliveries, or anything about driving with WolbiRides."
+  ? "Hi! Ask me about going online, payouts, deliveries, or anything about working as a WolbiRides rider."
   : "Hi! Ask me about fares, your trips, or say where you want to go and I'll set up the ride for you.";
 
 /**
  * Mobile counterpart of the web assistant panel (WR-15). Opened from a trip,
  * it carries that trip_id so fare questions get the real breakdown.
- * Riders get the same "Book this ride" drafts; booking uses the normal
+ * Passengers get the same "Book this ride" drafts; booking uses the normal
  * POST /trips, so fares and checks are identical to booking from the map.
  */
 export default function AssistantScreen({ navigation, route }: any) {

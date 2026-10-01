@@ -30,7 +30,6 @@ export function SafetyContactCard() {
   return (
     <div className="card profile-card profile-section">
       <h2 className="side-card-title">Emergency contact</h2>
-      <p className="profile-muted">If you press SOS during a ride, we'll text this person your location.</p>
       <form onSubmit={save}>
         <label className="field-label" htmlFor="ec-name">Name</label>
         <input id="ec-name" className="field-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mum" />
@@ -78,7 +77,6 @@ export function NotificationPrefsCard() {
   return (
     <div className="card profile-card profile-section">
       <h2 className="side-card-title">Notifications</h2>
-      <p className="profile-muted">Trip updates and safety alerts always come through.</p>
       {prefs == null && <p className="profile-muted">Loading…</p>}
       {prefs?.map((pref) => (
         <label className="pref-row" key={pref.category}>
@@ -147,7 +145,6 @@ export function RecurringRidesCard() {
   return (
     <div className="card profile-card profile-section">
       <h2 className="side-card-title">Regular rides</h2>
-      <p className="profile-muted">Get a reminder before rides you take every week. We never book for you.</p>
 
       {rides == null && <p className="profile-muted">Loading…</p>}
       {rides?.map((ride) => (
@@ -219,7 +216,7 @@ export function RidePreferencesCard() {
   const toast = useToast();
   const [prefs, setPrefs] = useState<Record<string, boolean | string> | null>(null);
   const LABELS: Record<string, string> = {
-    prefer_previous_drivers: "Prefer drivers I've ridden with",
+    prefer_previous_drivers: "Prefer riders I've ridden with",
     quiet_ride: "Quiet ride",
     needs_luggage_space: "Space for luggage",
     needs_accessibility_help: "Help getting in and out",
@@ -245,18 +242,14 @@ export function RidePreferencesCard() {
   return (
     <div className="card profile-card profile-section">
       <h2 className="side-card-title">Ride preferences</h2>
-      <p className="profile-muted">
-        Optional. Only our matching uses these; drivers never see them. If no matching driver is free, we'll ask you
-        before sending anyone else.
-      </p>
       {prefs && (
         <>
-          <label className="field-label" htmlFor="pref-gender">Driver preference</label>
+          <label className="field-label" htmlFor="pref-gender">Rider preference</label>
           <select id="pref-gender" className="field-input" value={String(prefs.preferred_driver_gender || "")}
             onChange={(e) => save({ preferred_driver_gender: e.target.value })}>
             <option value="">No preference</option>
-            <option value="female">Female driver</option>
-            <option value="male">Male driver</option>
+            <option value="female">Female rider</option>
+            <option value="male">Male rider</option>
           </select>
           {Object.keys(LABELS).map((k) => (
             <label className="pref-row" key={k}>
@@ -324,7 +317,7 @@ export function BundlesCard() {
     }
   }
 
-  // Poll for up to ~2 minutes while the rider approves the MoMo prompt.
+  // Poll for up to ~2 minutes while the passenger approves the MoMo prompt.
   function waitForPayment(bundleId: string, attempt = 0) {
     if (attempt > 30) return;
     window.setTimeout(async () => {
@@ -346,7 +339,6 @@ export function BundlesCard() {
   return (
     <div className="card profile-card profile-section">
       <h2 className="side-card-title">Ride bundles</h2>
-      <p className="profile-muted">Pay once for several rides. Each ride uses one credit.</p>
       {plans.length > 0 && (
         <>
           <label className="field-label" htmlFor="bundle-momo">MoMo number for bundle payments</label>

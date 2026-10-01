@@ -2,7 +2,7 @@
 MTN Mobile Money API client (ported from wr_rides, extended).
 
 Two MTN products, each with its own subscription key and API user/key:
-  - Collections   charge a rider (request-to-pay, then poll or callback)
+  - Collections   charge a passenger (request-to-pay, then poll or callback)
   - Disbursements pay a driver out (transfer, then poll or callback)
 
 Everything is driven by settings (see .env.example). When a product's

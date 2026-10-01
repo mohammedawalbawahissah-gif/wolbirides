@@ -49,7 +49,7 @@ export default function Organizations() {
 
   return (
     <div>
-      <PageHeader title="Organizations" subtitle="Departments, hostels and companies that pay for their members' rides. Invoiced monthly." />
+      <PageHeader title="Organizations" />
       <div className="btn-row" style={{ marginBottom: 16 }}>
         <button className="btn btn-primary" onClick={() => setShowForm((v) => !v)}>{showForm ? "Cancel" : "Add organization"}</button>
       </div>

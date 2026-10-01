@@ -98,3 +98,11 @@
   font-size: 13.5px;
   margin-bottom: 16px;
 }
+
+/* Same chips as the passenger app's "Driver preference", so both sides of a match look and read alike. */
+.pref-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pref-chip {
+  border: 1px solid var(--line); background: var(--paper-raised); color: var(--ink-muted);
+  border-radius: var(--radius-pill); padding: 6px 10px; font-size: 12.5px; cursor: pointer;
+}
+.pref-chip-on { background: var(--navy-ink); border-color: var(--navy-ink); color: white; }

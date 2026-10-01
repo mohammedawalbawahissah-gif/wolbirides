@@ -33,8 +33,7 @@ export default function Bundles() {
 
   return (
     <div>
-      <PageHeader title="Ride bundles"
-        subtitle="Switch a bundle on once its payment is confirmed. Add or edit plans in Django admin." />
+      <PageHeader title="Ride bundles" />
       <div className="filter-row">
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="pending_payment">Awaiting payment</option>
@@ -50,7 +49,7 @@ export default function Bundles() {
       {bundles && bundles.length > 0 && (
         <div className="panel">
           <table className="data-table">
-            <thead><tr><th>Rider</th><th>Plan</th><th>Price</th><th>Rides</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Passenger</th><th>Plan</th><th>Price</th><th>Rides</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {bundles.map((b) => (
                 <tr key={b.id}>

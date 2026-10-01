@@ -2,8 +2,8 @@ import type { Trip } from "../api/client";
 import "./RideStepper.css";
 
 const STEPS: { key: Trip["status"][]; label: string }[] = [
-  { key: ["requested", "matching"], label: "Finding driver" },
-  { key: ["matched"], label: "Driver assigned" },
+  { key: ["requested", "matching", "awaiting_assignment"], label: "Finding rider" },
+  { key: ["matched"], label: "Rider assigned" },
   { key: ["driver_arriving"], label: "Arriving" },
   { key: ["in_progress"], label: "On trip" },
   { key: ["completed"], label: "Done" },

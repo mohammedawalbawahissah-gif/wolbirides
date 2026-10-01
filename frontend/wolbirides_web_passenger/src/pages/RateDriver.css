@@ -1,0 +1,10 @@
+.rate-list { display: flex; flex-direction: column; gap: 10px; }
+.rate-list-item { padding: 0; overflow: hidden; }
+.rate-list-item .rating-card { max-width: none; padding: 16px; }
+.rate-list-row {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left;
+  padding: 14px 16px; background: none; border: none; cursor: pointer; font: inherit;
+}
+.rate-list-route { font-weight: 600; font-size: 14.5px; }
+.rate-list-meta { font-size: 12.5px; color: var(--ink-muted); margin-top: 2px; }
+.rate-list-cta { color: var(--navy-ink); font-weight: 700; font-size: 14px; }

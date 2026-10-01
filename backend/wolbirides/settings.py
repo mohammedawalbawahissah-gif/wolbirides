@@ -43,6 +43,12 @@ if not DEBUG and SECRET_KEY.startswith('django-insecure'):
     raise ImproperlyConfigured('Set DJANGO_SECRET_KEY before running with DJANGO_DEBUG=False.')
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
+if DEBUG:
+    # Development only: a phone on a hotspot or Wi-Fi reaches this computer by whatever address the network
+    # gave it, and that changes. Django's default for DEBUG is localhost only, so a fixed list here made every
+    # phone request fail with "Invalid HTTP_HOST" (which the apps then reported as a wrong password).
+    # Production (DEBUG=False) still uses exactly the list above; with an empty list Django rejects every request.
+    ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -196,6 +202,7 @@ REST_FRAMEWORK = {
         'voucher_redeem': '10/hour',
         'support_ticket': '10/hour',
         'momo_initiate': '10/hour',
+        'hubtel_initiate': '10/hour',
         'otp_request_phone': '3/10min',
         'otp_request_email': '3/10min',
         'login_email': '10/10min',
@@ -243,7 +250,7 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 # --- Third-party integrations (reused from other Wolbi platforms) ---
 AFRICASTALKING_USERNAME = os.environ.get('AFRICASTALKING_USERNAME', '')
 AFRICASTALKING_API_KEY = os.environ.get('AFRICASTALKING_API_KEY', '')
-# MTN MoMo (payments/momo.py). Collections charge riders; Disbursements pay
+# MTN MoMo (payments/momo.py). Collections charge passengers; Disbursements pay
 # drivers. Each needs its own subscription key + API user + API key from the
 # MTN developer portal. Leave blank for dev mode (no calls to MTN).
 MOMO_BASE_URL = os.environ.get('MOMO_BASE_URL', 'https://sandbox.momodeveloper.mtn.com')
@@ -259,6 +266,25 @@ MOMO_DISBURSEMENT_API_KEY = os.environ.get('MOMO_DISBURSEMENT_API_KEY', '')
 # Dev only: with no Collections credentials, a pending MoMo payment is marked
 # successful on its first status check so the whole flow can be clicked through.
 MOMO_DEV_AUTO_APPROVE = os.environ.get('MOMO_DEV_AUTO_APPROVE', 'True').lower() in ('1', 'true', 'yes')
+
+# Hubtel: unverified against Hubtel's real API — see payments/hubtel.py's module docstring.
+HUBTEL_BASE_URL = os.environ.get('HUBTEL_BASE_URL', 'https://rmp.hubtel.com')
+HUBTEL_CLIENT_ID = os.environ.get('HUBTEL_CLIENT_ID', '')
+HUBTEL_CLIENT_SECRET = os.environ.get('HUBTEL_CLIENT_SECRET', '')
+HUBTEL_MERCHANT_ACCOUNT_NUMBER = os.environ.get('HUBTEL_MERCHANT_ACCOUNT_NUMBER', '')
+HUBTEL_CALLBACK_URL = os.environ.get('HUBTEL_CALLBACK_URL', '')  # https://<api-host>/api/payments/hubtel/webhook
+# WR-26: which delivery types go to the ops queue for a person to assign, instead of straight to
+# nearby drivers. Parcels dispatch automatically and only fall back to the queue if no driver takes
+# them. Errands and vendor orders involve a cash float and a third party, so a person checks first.
+DELIVERY_ADMIN_FIRST_SUBTYPES = [
+    s.strip() for s in os.environ.get('DELIVERY_ADMIN_FIRST_SUBTYPES', 'errand,vendor_order').split(',') if s.strip()
+]
+# WR-26: how long a driver ops directly offered a delivery to has to accept or decline before
+# it returns to the queue. Deliberately longer than organic dispatch's snap-decision race
+# (trips.services.DISPATCH_OFFER_TIMEOUT_SECONDS) since ops picked this one driver on purpose,
+# rather than racing the nearest few — the point is giving them time to actually notice, not speed.
+ADMIN_OFFER_TIMEOUT_SECONDS = int(os.environ.get('ADMIN_OFFER_TIMEOUT_SECONDS', '180'))
+HUBTEL_DEV_AUTO_APPROVE = os.environ.get('HUBTEL_DEV_AUTO_APPROVE', 'True').lower() in ('1', 'true', 'yes')
 
 # WR-14: driver commission rate for automated weekly payouts. Kept as a
 # single global env-driven value for now (0.00 = founding-driver 0%
@@ -369,16 +395,24 @@ FAIR_QUEUE_SHARE = float(os.environ.get("FAIR_QUEUE_SHARE", "0.15"))
 # WR-22: bundles expiring sooner than a full academic term need explicit acknowledgement.
 BUNDLE_MIN_TERM_DAYS = int(os.environ.get("BUNDLE_MIN_TERM_DAYS", "120"))
 
-# WR-23 WolbiDeliver: flat surcharge added to the distance fare for parcels.
-DELIVERY_SURCHARGE = os.environ.get("DELIVERY_SURCHARGE", "3.00")
+# WR-23/25 WolbiDeliver surcharges, added on top of the distance fare.
+# Parcels are priced by package size (bigger item, more effort/risk to carry).
+DELIVERY_SURCHARGE_BY_SIZE = {
+    "small": os.environ.get("DELIVERY_SURCHARGE_SMALL", "3.00"),
+    "medium": os.environ.get("DELIVERY_SURCHARGE_MEDIUM", "5.00"),
+    "large": os.environ.get("DELIVERY_SURCHARGE_LARGE", "8.00"),
+}
+# Errands and vendor orders have no package_size (the courier is buying/collecting on the
+# requester's behalf, not carrying a pre-packed item), so they take one flat task fee instead.
+DELIVERY_TASK_SURCHARGE = os.environ.get("DELIVERY_TASK_SURCHARGE", "4.00")
 
 # Behind nginx/a load balancer terminating TLS.
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()]
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# WR-17 shared rides. PRD cap: 2 riders per yellow-yellow. Pricing: base fare
-# shared, each rider pays their own distance charge, never above their solo fare.
-POOL_MAX_RIDERS = int(os.environ.get("POOL_MAX_RIDERS", "2"))
+# WR-17 shared rides. PRD cap: 2 passengers per yellow-yellow. Pricing: base fare
+# shared, each passenger pays their own distance charge, never above their solo fare.
+POOL_MAX_PASSENGERS = int(os.environ.get("POOL_MAX_PASSENGERS", os.environ.get("POOL_MAX_RIDERS", "2")))  # POOL_MAX_RIDERS: old name
 POOL_PICKUP_RADIUS_KM = float(os.environ.get("POOL_PICKUP_RADIUS_KM", "0.8"))
 POOL_DESTINATION_RADIUS_KM = float(os.environ.get("POOL_DESTINATION_RADIUS_KM", "1.5"))
 POOL_JOIN_WINDOW_MINUTES = float(os.environ.get("POOL_JOIN_WINDOW_MINUTES", "5"))

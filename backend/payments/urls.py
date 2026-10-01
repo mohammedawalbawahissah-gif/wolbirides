@@ -6,6 +6,8 @@ from payments.views import (
     AdminPayoutGenerateView,
     CashConfirmView,
     DriverPayoutListView,
+    HubtelInitiateView,
+    HubtelWebhookView,
     MomoInitiateView,
     MomoWebhookView,
     TripPaymentView,
@@ -14,6 +16,8 @@ from payments.views import (
 urlpatterns = [
     path("payments/momo/initiate", MomoInitiateView.as_view(), name="momo-initiate"),
     path("payments/momo/webhook", MomoWebhookView.as_view(), name="momo-webhook"),
+    path("payments/hubtel/initiate", HubtelInitiateView.as_view(), name="hubtel-initiate"),
+    path("payments/hubtel/webhook", HubtelWebhookView.as_view(), name="hubtel-webhook"),
     path("payments/trip/<uuid:trip_id>", TripPaymentView.as_view(), name="trip-payment"),
     path("payments/cash/confirm", CashConfirmView.as_view(), name="cash-confirm"),
     path("drivers/me/payouts", DriverPayoutListView.as_view(), name="driver-payouts"),

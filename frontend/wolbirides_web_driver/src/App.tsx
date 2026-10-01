@@ -9,6 +9,7 @@ import Earnings from "./pages/Earnings";
 import Home from "./pages/Home";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
+import Requests from "./pages/Requests";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Trips from "./pages/Trips";
@@ -34,6 +35,7 @@ export default function App() {
           >
             <Route element={<AppLayout />}>
               <Route index element={<Home />} />
+              <Route path="requests" element={<Requests />} />
               <Route path="trips" element={<Trips />} />
               <Route path="earnings" element={<Earnings />} />
               <Route path="profile" element={<Profile />} />

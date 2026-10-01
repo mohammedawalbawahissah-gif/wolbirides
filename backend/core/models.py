@@ -56,7 +56,7 @@ class Notification(TimeStampedModel):
 
     class Category(models.TextChoices):
         TRIP = "trip", "Trip"
-        DRIVER = "driver", "Driver"
+        DRIVER = "driver", "Rider"
         INCIDENT = "incident", "Incident"
         SUPPORT = "support", "Support"
         SYSTEM = "system", "System"
@@ -121,7 +121,7 @@ def notify(user, title, body="", category=Notification.Category.SYSTEM, link="")
     if not is_notification_enabled(user, category):
         return None
     notification = Notification.objects.create(user=user, title=title, body=body, category=category, link=link)
-    # WR-16: riders aren't staring at the app, so functional alerts also go out as
+    # WR-16: passengers aren't staring at the app, so functional alerts also go out as
     # phone push notifications when the user has registered a device.
     from django.db import transaction
 

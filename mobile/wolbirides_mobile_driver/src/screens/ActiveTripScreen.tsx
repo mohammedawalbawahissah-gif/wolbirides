@@ -7,7 +7,7 @@ import { Button, Card, ErrorBanner, FieldLabel, TextField } from "../components/
 import { SOSButton } from "../components/Safety";
 import DriverPaymentPanel from "../components/DriverPaymentPanel";
 import PostTripCheckin from "../components/PostTripCheckin";
-import RateRider from "../components/RateRider";
+import RatePassenger from "../components/RatePassenger";
 import SupportCard from "../components/SupportCard";
 import { colors, spacing } from "../theme";
 import type { RootStackScreenProps } from "../navigation/types";
@@ -33,7 +33,7 @@ export default function ActiveTripScreen({ route, navigation }: RootStackScreenP
   useEffect(load, [tripId]);
   useEffect(() => {
     if (!trip?.pool_info?.open) return;
-    const id = setInterval(load, 15000); // riders may join a shared ride until the first pickup
+    const id = setInterval(load, 15000); // passengers may join a shared ride until the first pickup
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip?.pool_info?.open, tripId]);
@@ -69,7 +69,7 @@ export default function ActiveTripScreen({ route, navigation }: RootStackScreenP
   async function cancelTrip() {
     setBusy(true);
     try {
-      await api.post(`/trips/${tripId}/cancel`, { reason: "Driver cancelled" });
+      await api.post(`/trips/${tripId}/cancel`, { reason: "Rider cancelled" });
       navigation.replace("MainTabs");
     } finally {
       setBusy(false);
@@ -91,7 +91,7 @@ export default function ActiveTripScreen({ route, navigation }: RootStackScreenP
 
         {trip.pool_info?.stops && trip.pool_info.stops.length > 2 && (
           <Card style={[styles.detailCard, { borderLeftWidth: 4, borderLeftColor: colors.gold }]}>
-            <Text style={styles.routeText}>Shared ride: {trip.pool_info.rider_count} riders, in this order</Text>
+            <Text style={styles.routeText}>Shared ride: {trip.pool_info.passenger_count} passengers, in this order</Text>
             {trip.pool_info.stops.map((stop, i) => (
               <TouchableOpacity key={`${stop.type}-${stop.trip_id}`}
                 onPress={() => stop.trip_id !== trip.id && navigation.replace("ActiveTrip", { tripId: stop.trip_id })}
@@ -126,7 +126,29 @@ export default function ActiveTripScreen({ route, navigation }: RootStackScreenP
 
         {trip.delivery && (
           <Card style={styles.detailCard}>
-            <Text style={styles.routeText}>Package: {trip.delivery.package_description} ({trip.delivery.package_size})</Text>
+            {trip.delivery.delivery_subtype === "parcel" && (
+              <Text style={styles.routeText}>Package: {trip.delivery.package_description} ({trip.delivery.package_size})</Text>
+            )}
+            {trip.delivery.delivery_subtype === "errand" && (
+              <Text style={styles.routeText}>Errand: {trip.delivery.task_description}</Text>
+            )}
+            {trip.delivery.delivery_subtype === "vendor_order" && (
+              <>
+                {!!trip.delivery.vendor && (
+                  <Text style={styles.routeText}>
+                    Vendor: {trip.delivery.vendor.name}{trip.delivery.vendor.location_label ? `, ${trip.delivery.vendor.location_label}` : ""}
+                  </Text>
+                )}
+                <Text style={styles.routeText}>Order: {trip.delivery.task_description}</Text>
+              </>
+            )}
+            {!!trip.delivery.spend_limit && <Text style={styles.routeText}>Spend up to: GH₵{trip.delivery.spend_limit}</Text>}
+            {!!trip.delivery.sender_name && (
+              <Text style={styles.routeText}
+                onPress={trip.delivery.sender_phone ? () => Linking.openURL(`tel:${trip.delivery!.sender_phone}`) : undefined}>
+                Collect from {trip.delivery.sender_name}{trip.delivery.sender_phone ? ` (${trip.delivery.sender_phone})` : ""}
+              </Text>
+            )}
             <Text style={styles.routeText} onPress={() => Linking.openURL(`tel:${trip.delivery!.recipient_phone}`)}>
               Deliver to {trip.delivery.recipient_name} ({trip.delivery.recipient_phone})
             </Text>
@@ -147,7 +169,7 @@ export default function ActiveTripScreen({ route, navigation }: RootStackScreenP
         {error && <ErrorBanner message={error} />}
 
         {(trip.status === "matched" || trip.status === "driver_arriving") && !isDelivery && (
-          <Button title={busy ? "Starting…" : "Start trip (rider on board)"} onPress={() => act("start")} variant="gold" loading={busy} />
+          <Button title={busy ? "Starting…" : "Start trip (passenger on board)"} onPress={() => act("start")} variant="gold" loading={busy} />
         )}
         {(trip.status === "matched" || trip.status === "driver_arriving" || trip.status === "in_progress") && isDelivery && (
           <View style={{ marginBottom: spacing.sm }}>
@@ -166,7 +188,7 @@ export default function ActiveTripScreen({ route, navigation }: RootStackScreenP
         <Button title="Cancel trip" onPress={cancelTrip} variant="dangerGhost" disabled={busy} />
 
         {["matched", "driver_arriving", "in_progress"].includes(trip.status) && <SOSButton tripId={trip.id} />}
-        {trip.status === "completed" && <RateRider tripId={trip.id} alreadyRated={trip.rated_by_me} />}
+        {trip.status === "completed" && <RatePassenger tripId={trip.id} alreadyRated={trip.rated_by_me} />}
         {trip.status === "completed" && <PostTripCheckin tripId={trip.id} />}
         {trip.status === "completed" && <SupportCard tripId={trip.id} />}
         {trip.status === "completed" && (

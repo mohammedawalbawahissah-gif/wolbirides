@@ -18,7 +18,7 @@ export default function DriverPaymentPanel({ tripId, fare, paymentMethod, onDone
 
   useEffect(() => {
     load();
-    const id = window.setInterval(load, 5000); // the rider may pay by MoMo while the driver waits
+    const id = window.setInterval(load, 5000); // the passenger may pay by MoMo while the driver waits
     return () => window.clearInterval(id);
   }, [load]);
 
@@ -36,8 +36,9 @@ export default function DriverPaymentPanel({ tripId, fare, paymentMethod, onDone
     }
   }
 
+  const PROVIDER_NAME: Record<string, string> = { momo: "MTN MoMo", hubtel: "Hubtel" };
   const paid = prepaid || payment?.status === "success";
-  const momoPending = payment?.method === "momo" && payment.status === "pending";
+  const mobileMoneyPending = (payment?.method === "momo" || payment?.method === "hubtel") && payment.status === "pending";
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
@@ -45,14 +46,16 @@ export default function DriverPaymentPanel({ tripId, fare, paymentMethod, onDone
       {paid ? (
         <p style={{ color: "var(--success)", fontWeight: 600, margin: "0 0 12px" }}>
           {prepaid ? "Prepaid. Don't collect cash; it's in your weekly payout."
-            : payment!.method === "momo" ? `Paid GH₵${payment!.amount} by MoMo. Don't collect cash.`
-            : `Cash GH₵${payment!.amount} recorded.`}
+            : payment!.method === "cash" ? `Cash GH₵${payment!.amount} recorded.`
+            : `Paid GH₵${payment!.amount} by ${PROVIDER_NAME[payment!.method] ?? payment!.method}. Don't collect cash.`}
         </p>
-      ) : momoPending ? (
-        <p style={{ margin: "0 0 12px" }}>The rider is approving a MoMo payment. Wait a moment before collecting cash.</p>
+      ) : mobileMoneyPending ? (
+        <p style={{ margin: "0 0 12px" }}>
+          The passenger is approving a {PROVIDER_NAME[payment!.method] ?? "mobile money"} payment. Wait a moment before collecting cash.
+        </p>
       ) : (
         <>
-          <p style={{ margin: "0 0 12px" }}>Collect <strong>GH₵{fare}</strong> in cash, or wait while the rider pays by MoMo.</p>
+          <p style={{ margin: "0 0 12px" }}>Collect <strong>GH₵{fare}</strong> in cash, or wait while the passenger pays by mobile money.</p>
           {error && <p style={{ color: "var(--danger)", fontSize: 13.5 }}>{error}</p>}
           <button className="btn btn-success btn-block" disabled={busy} onClick={confirmCash}>
             {busy ? "Saving…" : "Cash received"}

@@ -16,7 +16,7 @@ class ZoneApiTests(TestCase):
         PickupPoint.objects.create(zone=zone, name="Main gate", latitude=9.4, longitude=-0.9, sponsor_name="Campus Prints")
         c = APIClient(); c.force_authenticate(User.objects.create_user(phone="+233200000001", role="passenger"))
         data = c.get("/api/zones").data[0]
-        self.assertEqual(data["pool_max_riders"], 2)
+        self.assertEqual(data["pool_max_passengers"], 2)
         self.assertEqual(data["pickup_points"][0]["sponsor_name"], "Campus Prints")
 
     def test_security_contact_is_admin_only(self):

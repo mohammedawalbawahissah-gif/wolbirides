@@ -8,6 +8,7 @@ from trips.views import (
     PaymentOptionsView,
     RidePreferenceView,
     DriverActiveTripView,
+    DriverCurrentOfferView,
     PassengerTripHistoryView,
     TripAcceptView,
     TripCancelView,
@@ -17,12 +18,14 @@ from trips.views import (
     TripRatingView,
     TripRequestView,
     TripStartView,
+    VendorSearchView,
 )
 
 urlpatterns = [
     path("trips", TripRequestView.as_view(), name="trip-request"),
     path("passengers/me/rides", PassengerTripHistoryView.as_view(), name="passenger-trip-history"),
     path("drivers/me/active-trip", DriverActiveTripView.as_view(), name="driver-active-trip"),
+    path("drivers/me/current-offer", DriverCurrentOfferView.as_view(), name="driver-current-offer"),
     path("trips/<uuid:trip_id>", TripDetailView.as_view(), name="trip-detail"),
     path("trips/<uuid:trip_id>/accept", TripAcceptView.as_view(), name="trip-accept"),
     path("trips/<uuid:trip_id>/decline", TripDeclineView.as_view(), name="trip-decline"),
@@ -35,6 +38,7 @@ urlpatterns = [
     path("trips/<uuid:trip_id>/confirm-dropoff", DeliveryConfirmView.as_view(step="dropoff"), name="delivery-confirm-dropoff"),
     path("passengers/me/ride-preferences", RidePreferenceView.as_view(), name="ride-preferences"),
     path("passengers/me/payment-options", PaymentOptionsView.as_view(), name="payment-options"),
+    path("vendors", VendorSearchView.as_view(), name="vendor-search"),
     path("admin/trust-indicators", AdminTrustIndicatorsView.as_view(), name="admin-trust-indicators"),
     path("admin/dispatch/fairness", AdminDispatchFairnessView.as_view(), name="admin-dispatch-fairness"),
 ]

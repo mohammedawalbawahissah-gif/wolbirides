@@ -6,7 +6,8 @@ import "./Layout.css";
 
 const NAV_ITEMS = [
   { to: "/", label: "Overview", end: true, support: true },
-  { to: "/drivers", label: "Drivers" },
+  { to: "/drivers", label: "Riders" },
+  { to: "/deliveries", label: "Deliveries", support: true },
   { to: "/trips", label: "Trips", support: true },
   { to: "/incidents", label: "Incidents", support: true },
   { to: "/payouts", label: "Payouts" },
@@ -38,7 +39,7 @@ export default function Layout() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">WR</span>
+          <img src="/favicon.svg" alt="WolbiRides" className="brand-mark" />
           <span className="brand-name">WolbiRides</span>
           <div className="sidebar-bell">
             <NotificationBell />
@@ -67,7 +68,7 @@ export default function Layout() {
             </div>
             <div>
               <div className="account-name">{user?.name || user?.email || user?.phone}</div>
-              <div className="account-role">{user?.role}</div>
+              <div className="account-role">admin</div>
             </div>
           </div>
           <button className="logout-btn" onClick={logout}>
@@ -79,7 +80,7 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <AssistantPanel greeting="Hi! Ask me about dashboard metrics, driver verification, or incident severity." />
+      <AssistantPanel greeting="Hi! Ask me about dashboard metrics, rider verification, or incident severity." />
     </div>
   );
 }

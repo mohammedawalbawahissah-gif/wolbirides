@@ -4,6 +4,42 @@ import { Button } from "../components/ui";
 import { colors, spacing } from "../theme";
 import type { RideOffer } from "../api/client";
 
+/** The offer's own details, shared between the countdown modal and the persistent Requests
+ * screen — whichever a driver sees it through, it should read exactly the same. */
+export function OfferBody({ offer }: { offer: RideOffer }) {
+  return (
+    <>
+      <Text style={styles.title}>
+        {(offer.trip_type ?? offer.kind) === "delivery" ? "New delivery request"
+          : offer.pool_legs ? "Shared ride: 2 passengers" : "New ride request"}
+      </Text>
+      {(offer.trip_type ?? offer.kind) === "delivery" && (
+        <Text style={styles.tag}>
+          {offer.delivery_subtype === "errand" && `Errand: ${offer.task_description ?? ""}`}
+          {offer.delivery_subtype === "vendor_order" && `Vendor order${offer.vendor_name ? ` from ${offer.vendor_name}` : ""}: ${offer.task_description ?? ""}`}
+          {(!offer.delivery_subtype || offer.delivery_subtype === "parcel") && !!offer.package_description &&
+            `Package: ${offer.package_description}${offer.package_size ? ` (${offer.package_size})` : ""}`}
+          {!!offer.spend_limit && ` · Spend up to GH₵${offer.spend_limit}`}
+        </Text>
+      )}
+      {offer.pool_legs?.map((leg, i) => (
+        <Text key={`${leg.type}-${leg.trip_id}`} style={{ fontSize: 13.5, color: colors.ink, marginBottom: 2 }}>
+          {i + 1}. {leg.type === "pickup" ? "Pick up" : "Drop off"} {leg.first_name}: {leg.label || "—"}
+        </Text>
+      ))}
+      <View style={styles.routeRow}>
+        <View style={[styles.dot, { backgroundColor: colors.gold }]} />
+        <Text style={styles.routeText}>{offer.pickup_label}</Text>
+      </View>
+      <View style={styles.routeRow}>
+        <View style={[styles.dot, { backgroundColor: colors.navyInk }]} />
+        <Text style={styles.routeText}>{offer.destination_label}</Text>
+      </View>
+      <Text style={styles.fare}>GH₵{offer.fare_estimate}</Text>
+    </>
+  );
+}
+
 export default function OfferModal({
   offer,
   onAccept,
@@ -41,27 +77,7 @@ export default function OfferModal({
             <View style={[styles.timerFill, { width: `${pct}%` }]} />
           </View>
 
-          <Text style={styles.title}>
-            {(offer.trip_type ?? offer.kind) === "delivery" ? "New delivery request"
-              : offer.pool_legs ? "Shared ride: 2 riders" : "New ride request"}
-          </Text>
-          {(offer.trip_type ?? offer.kind) === "delivery" && !!offer.package_description && (
-            <Text style={styles.tag}>Package: {offer.package_description}{offer.package_size ? ` (${offer.package_size})` : ""}</Text>
-          )}
-          {offer.pool_legs?.map((leg, i) => (
-            <Text key={`${leg.type}-${leg.trip_id}`} style={{ fontSize: 13.5, color: colors.ink, marginBottom: 2 }}>
-              {i + 1}. {leg.type === "pickup" ? "Pick up" : "Drop off"} {leg.first_name}: {leg.label || "—"}
-            </Text>
-          ))}
-          <View style={styles.routeRow}>
-            <View style={[styles.dot, { backgroundColor: colors.gold }]} />
-            <Text style={styles.routeText}>{offer.pickup_label}</Text>
-          </View>
-          <View style={styles.routeRow}>
-            <View style={[styles.dot, { backgroundColor: colors.navyInk }]} />
-            <Text style={styles.routeText}>{offer.destination_label}</Text>
-          </View>
-          <Text style={styles.fare}>GH₵{offer.fare_estimate}</Text>
+          <OfferBody offer={offer} />
 
           <View style={styles.actions}>
             <Button title="Decline" onPress={onDecline} variant="dangerGhost" style={styles.actionBtn} />

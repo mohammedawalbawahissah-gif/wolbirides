@@ -4,8 +4,8 @@ import { api } from "../api/client";
 import { colors, spacing, typography } from "../theme";
 import { Button, Card } from "./ui";
 
-/** Same as web: drivers rate riders once a trip is complete; once per trip. */
-export default function RateRider({ tripId, alreadyRated }: { tripId: string; alreadyRated?: boolean }) {
+/** Same as web: drivers rate passengers once a trip is complete; once per trip. */
+export default function RatePassenger({ tripId, alreadyRated }: { tripId: string; alreadyRated?: boolean }) {
   const [score, setScore] = useState(0);
   const [done, setDone] = useState(!!alreadyRated);
   const [busy, setBusy] = useState(false);
@@ -25,7 +25,7 @@ export default function RateRider({ tripId, alreadyRated }: { tripId: string; al
   if (done) return null;
   return (
     <Card style={{ marginTop: spacing.md, gap: spacing.sm }}>
-      <Text style={typography.h2}>How was this rider?</Text>
+      <Text style={typography.h2}>How was this passenger?</Text>
       <View style={{ flexDirection: "row", gap: 6 }} accessibilityRole="radiogroup">
         {[1, 2, 3, 4, 5].map((n) => (
           <TouchableOpacity key={n} onPress={() => setScore(n)} accessibilityRole="radio"

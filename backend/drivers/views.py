@@ -39,23 +39,37 @@ class DriverMeView(APIView):
     @staticmethod
     def _with_private(driver):
         # WR-19: gender is self-reported, optional, and used only by matching. It's returned to
-        # the driver themself here and nowhere else (not in admin lists or rider views).
+        # the driver themself here and nowhere else (not in admin lists or passenger views).
         data = DriverSerializer(driver).data
         data["gender"] = driver.gender
         return data
 
     def patch(self, request):
-        """WR-19/23: drivers set what they offer. Only these flags are editable here."""
+        """WR-19/23: drivers set what they offer, and where they're paid. Only these fields
+        are editable here."""
         driver = get_object_or_404(Driver, user=request.user)
         editable = ("offers_quiet_ride", "has_luggage_space", "accessibility_trained", "accepts_deliveries")
         for field in editable:
             if field in request.data:
                 setattr(driver, field, bool(request.data[field]))
+        touched = [*editable]
         if "gender" in request.data:
             if request.data["gender"] not in ("", "female", "male"):
                 return Response({"detail": "gender must be '', 'female' or 'male'."}, status=400)
             driver.gender = request.data["gender"]
-        driver.save(update_fields=[*editable, "gender", "updated_at"])
+            touched.append("gender")
+        if "payout_provider" in request.data:
+            if request.data["payout_provider"] not in ("momo", "hubtel"):
+                return Response({"detail": "payout_provider must be 'momo' or 'hubtel'."}, status=400)
+            driver.payout_provider = request.data["payout_provider"]
+            touched.append("payout_provider")
+        if "payout_phone" in request.data:
+            from drivers.services import _normalize
+
+            raw = (request.data["payout_phone"] or "").strip()
+            driver.payout_phone = _normalize(raw) if raw else ""
+            touched.append("payout_phone")
+        driver.save(update_fields=[*touched, "updated_at"])
         return Response(self._with_private(driver))
 
 

@@ -9,11 +9,14 @@ import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 
 // Pages load on first visit. Mainly for the public trip-share page: someone opening a
-// shared link on mobile data gets that page and the map, not the whole rider app.
+// shared link on mobile data gets that page and the map, not the whole passenger app.
+const BookRide = lazy(() => import("./pages/BookRide"));
 const History = lazy(() => import("./pages/History"));
 const Home = lazy(() => import("./pages/Home"));
 const Profile = lazy(() => import("./pages/Profile"));
+const RateDriver = lazy(() => import("./pages/RateDriver"));
 const SharedTrip = lazy(() => import("./pages/SharedTrip"));
+const Support = lazy(() => import("./pages/Support"));
 const TripStatus = lazy(() => import("./pages/TripStatus"));
 
 export default function App() {
@@ -38,6 +41,9 @@ export default function App() {
             }
           >
             <Route index element={<Home />} />
+            <Route path="book" element={<BookRide />} />
+            <Route path="rate" element={<RateDriver />} />
+            <Route path="support" element={<Support />} />
             <Route path="history" element={<History />} />
             <Route path="profile" element={<Profile />} />
           </Route>

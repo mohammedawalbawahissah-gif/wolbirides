@@ -13,6 +13,7 @@ class Payment(TimeStampedModel):
     class Method(models.TextChoices):
         CASH = "cash", "Cash"
         MOMO = "momo", "Mobile Money"
+        HUBTEL = "hubtel", "Hubtel"
         ORGANIZATION = "organization", "Billed to organization"  # WR-21
         VOUCHER = "voucher", "Organization voucher"  # WR-21
         BUNDLE = "bundle", "Prepaid bundle"  # WR-22
@@ -29,6 +30,7 @@ class Payment(TimeStampedModel):
     class FundingSource(models.TextChoices):
         CASH = "cash", "Cash"
         MOMO = "momo", "Mobile Money"
+        HUBTEL = "hubtel", "Hubtel"
         ORGANIZATION_ACCOUNT = "organization_account", "Organization account"
         ORGANIZATION_VOUCHER = "organization_voucher", "Organization voucher"
         RIDE_BUNDLE = "ride_bundle", "Ride bundle"
@@ -68,6 +70,7 @@ class Payout(TimeStampedModel):
     # Per-trip breakdown: [{"trip_id": ..., "fare": "15.00", "commission": "0.00", "net": "15.00", "completed_at": ...}, ...]
     # so a driver sees exactly which rides make up the total, not one opaque number.
     line_items = models.JSONField(default=list, blank=True)
+    provider = models.CharField(max_length=10, blank=True, help_text="momo or hubtel — set when disbursed")
     provider_reference = models.CharField(max_length=100, blank=True)
     failure_reason = models.CharField(max_length=255, blank=True)
     retry_count = models.PositiveSmallIntegerField(default=0)

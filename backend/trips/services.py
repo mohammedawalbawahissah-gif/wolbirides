@@ -18,11 +18,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from trips.matching import haversine_km, scored_candidate_drivers, trip_group_name
-from trips.models import DeliveryDetail, FareQuote, Trip, TripEvent, TripPreference
+from trips.models import DeliveryDetail, FareQuote, Trip, TripEvent, TripPreference, Vendor
 
 
 class TripRequestError(ValueError):
-    """A trip request that can't go ahead as asked, with rider-facing text."""
+    """A trip request that can't go ahead as asked, with passenger-facing text."""
 
 
 class TripFlowError(ValueError):
@@ -31,6 +31,10 @@ class TripFlowError(ValueError):
 
 class DeliveryCodeError(ValueError):
     pass
+
+
+class AssignmentError(ValueError):
+    """Ops tried to hand a delivery to someone who can't take it (wrong state, busy, unverified...)."""
 
 
 class OfferNotValid(ValueError):
@@ -69,13 +73,22 @@ def _broadcast_trip_update(trip):
     )
 
 
-def quote_fare(zone, distance_km, trip_type="ride"):
+def quote_fare(zone, distance_km, trip_type="ride", delivery_subtype=None, package_size=None):
     """PRD Section 5 FareQuote. Placeholder linear model until WR-02 field research
-    replaces base_fare/per_km_rate. WR-23 deliveries add a flat surcharge."""
+    replaces base_fare/per_km_rate. WR-23/25: parcels surcharge by package size; errands
+    and vendor orders (no package to size) take a flat task surcharge instead."""
     from django.conf import settings
 
     per_km_charge = (Decimal(distance_km) * zone.per_km_rate).quantize(Decimal("0.01"))
-    surcharge = Decimal(str(settings.DELIVERY_SURCHARGE)) if trip_type == Trip.Kind.DELIVERY else Decimal("0.00")
+    surcharge = Decimal("0.00")
+    if trip_type == Trip.Kind.DELIVERY:
+        if delivery_subtype in (None, DeliveryDetail.Subtype.PARCEL):
+            size = package_size or DeliveryDetail.PackageSize.SMALL
+            surcharge = Decimal(str(settings.DELIVERY_SURCHARGE_BY_SIZE.get(
+                size, settings.DELIVERY_SURCHARGE_BY_SIZE["small"]
+            )))
+        else:
+            surcharge = Decimal(str(settings.DELIVERY_TASK_SURCHARGE))
     return {
         "distance_km": distance_km,
         "base_fare": zone.base_fare,
@@ -106,14 +119,20 @@ def request_trip(passenger, zone, pickup, destination, client_reported_distance_
 
     `options` (all optional):
       trip_type "ride" | "delivery" (legacy alias: kind)                        WR-23
-      recipient_name, recipient_phone, package_description, package_size       WR-23
+      delivery_subtype "parcel" (default) | "errand" | "vendor_order"           WR-25
+      recipient_name, recipient_phone, package_description, package_size        WR-23
+        — required for "parcel"; not required for "errand"/"vendor_order"       WR-25
+      task_description, spend_limit                                             WR-25
+        — what the courier buys/collects, and how much they can spend           WR-25
+      vendor_id (existing Vendor) or vendor_name/vendor_location (new one)       WR-25
+        — "vendor_order" only; a new name+location creates a Vendor row         WR-25
       shareable (legacy alias: is_pool)                                         WR-17
       preferences {preferred_driver_gender, prefer_previous_drivers, ...}       WR-19
       payment_method None (auto) | cash | momo | organization | voucher | bundle
       organization_id / voucher_id (WR-21), bundle_id (WR-22), promo_code (WR-24)
 
     With no payment_method, an active ride bundle pays automatically, oldest
-    first, when it covers the fare (WR-22); otherwise the rider pays per trip.
+    first, when it covers the fare (WR-22); otherwise the passenger pays per trip.
     Runs in one transaction, so a rejected option leaves nothing behind.
     """
     options = options or {}
@@ -123,12 +142,26 @@ def request_trip(passenger, zone, pickup, destination, client_reported_distance_
     payment_method = options.get("payment_method") or None
     shareable = bool(options.get("shareable", options.get("is_pool"))) and trip_type == Trip.Kind.RIDE
 
+    delivery_subtype = options.get("delivery_subtype") or DeliveryDetail.Subtype.PARCEL
+    if delivery_subtype not in DeliveryDetail.Subtype.values:
+        raise TripRequestError("delivery_subtype must be 'parcel', 'errand', or 'vendor_order'.")
+
+    vendor = None
+    parties = {}
     if trip_type == Trip.Kind.DELIVERY:
-        missing = [f for f in ("recipient_name", "recipient_phone", "package_description") if not options.get(f)]
-        if missing:
-            raise TripRequestError(f"Deliveries need: {', '.join(missing)}.")
-        # Each delivery texts the recipient, whose number the sender chooses. Cap it so the
-        # booking form can't be used to spam arbitrary phones (bookings can be cancelled free).
+        if delivery_subtype == DeliveryDetail.Subtype.ERRAND:
+            if not options.get("task_description"):
+                raise TripRequestError("Tell the courier what to buy or collect.")
+        elif delivery_subtype == DeliveryDetail.Subtype.VENDOR_ORDER:
+            if not options.get("task_description"):
+                raise TripRequestError("Tell the courier what to order.")
+            vendor = _resolve_vendor(options)
+        elif not options.get("package_description"):
+            raise TripRequestError("Deliveries need: package_description.")
+        parties = _resolve_delivery_parties(passenger, delivery_subtype, options, vendor)
+        # Each delivery can text up to two third parties (sender and recipient), whose numbers the
+        # booker chooses. Cap it so the booking form can't be used to spam arbitrary phones
+        # (bookings can be cancelled free).
         recent = Trip.objects.filter(passenger=passenger, trip_type=Trip.Kind.DELIVERY,
                                      requested_at__gte=timezone.now() - timezone.timedelta(hours=1)).count()
         if recent >= DELIVERIES_PER_HOUR:
@@ -160,7 +193,7 @@ def request_trip(passenger, zone, pickup, destination, client_reported_distance_
                          float(destination["lat"]), float(destination["lng"])),
             2,
         )
-        fare = quote_fare(zone, distance_km, trip_type)
+        fare = quote_fare(zone, distance_km, trip_type, delivery_subtype, options.get("package_size"))
 
         discount, reason, promo = Decimal("0.00"), "", None
         if options.get("promo_code"):
@@ -186,10 +219,14 @@ def request_trip(passenger, zone, pickup, destination, client_reported_distance_
         if trip_type == Trip.Kind.DELIVERY:
             DeliveryDetail.objects.create(
                 trip=trip,
-                recipient_name=options["recipient_name"].strip(),
-                recipient_phone=_normalize(options["recipient_phone"]),
-                package_description=options["package_description"].strip(),
+                delivery_subtype=delivery_subtype,
+                sender_name=parties["sender_name"], sender_phone=parties["sender_phone"],
+                recipient_name=parties["recipient_name"], recipient_phone=parties["recipient_phone"],
+                package_description=(options.get("package_description") or "").strip(),
                 package_size=options.get("package_size") or DeliveryDetail.PackageSize.SMALL,
+                task_description=(options.get("task_description") or "").strip(),
+                spend_limit=options.get("spend_limit") or None,
+                vendor=vendor,
                 pickup_code=f"{secrets.randbelow(10000):04d}",
                 dropoff_code=f"{secrets.randbelow(10000):04d}",
             )
@@ -207,8 +244,76 @@ def request_trip(passenger, zone, pickup, destination, client_reported_distance_
         })
 
     if trip_type == Trip.Kind.DELIVERY:
-        transaction.on_commit(lambda: _notify_delivery_recipient(trip))
+        transaction.on_commit(lambda: _notify_delivery_parties(trip))
     return trip
+
+
+def _resolve_delivery_parties(passenger, subtype, options, vendor):
+    """
+    Who hands the item over (sender) and who takes it (recipient), with the booker filled in
+    on whichever side they are, so a client that leaves a side blank still works:
+
+      parcel        recipient required. Sender defaults to the booker (they're sending). If the
+                    booker is the recipient (they're receiving), the sender must be given.
+      errand        recipient defaults to the booker. The courier needs a contact at the
+                    pickup, so a sender name is required (phone optional).
+      vendor_order  recipient defaults to the booker. The sender defaults to the vendor.
+    """
+    me_name = (passenger.name or "").strip()
+    me_phone = _normalize(passenger.real_phone)
+
+    def clean(key):
+        return (options.get(key) or "").strip()
+
+    sender_name, sender_phone = clean("sender_name"), _normalize(options.get("sender_phone"))
+    recipient_name, recipient_phone = clean("recipient_name"), _normalize(options.get("recipient_phone"))
+
+    if subtype != DeliveryDetail.Subtype.PARCEL and not (recipient_name or recipient_phone):
+        recipient_name, recipient_phone = me_name, me_phone
+    if subtype == DeliveryDetail.Subtype.PARCEL:
+        missing = [f for f, v in (("recipient_name", recipient_name), ("recipient_phone", recipient_phone)) if not v]
+        if missing:
+            raise TripRequestError(f"Deliveries need: {', '.join(missing)}.")
+        if not (sender_name or sender_phone):
+            if recipient_phone and recipient_phone == me_phone:
+                raise TripRequestError("Tell us who is sending it to you (name and phone), so the courier can collect it.")
+            sender_name, sender_phone = me_name, me_phone
+    elif subtype == DeliveryDetail.Subtype.VENDOR_ORDER and vendor and not (sender_name or sender_phone):
+        sender_name, sender_phone = vendor.name, _normalize(vendor.phone)
+    if subtype == DeliveryDetail.Subtype.PARCEL and not sender_phone:
+        raise TripRequestError("Deliveries need: sender_phone.")
+    if subtype == DeliveryDetail.Subtype.ERRAND and not sender_name:
+        raise TripRequestError("Tell the courier who to collect from (a name, and a phone if you have one).")
+    if subtype != DeliveryDetail.Subtype.PARCEL and not (recipient_name and recipient_phone):
+        raise TripRequestError("Deliveries need a recipient name and phone. Add your own details in your profile, or fill them in.")
+    return {"sender_name": sender_name, "sender_phone": sender_phone,
+            "recipient_name": recipient_name, "recipient_phone": recipient_phone}
+
+
+def _resolve_vendor(options):
+    """WR-25: vendor_order lookup/creation. vendor_id wins if given (picked from
+    autocomplete); otherwise vendor_name (+ optional vendor_location/vendor_phone) creates
+    or reuses a Vendor row, matched case-insensitively so "Vero's Kitchen" and "vero's
+    kitchen" don't become two rows."""
+    vendor_id = options.get("vendor_id")
+    if vendor_id:
+        try:
+            return Vendor.objects.get(id=vendor_id)
+        except Vendor.DoesNotExist as exc:
+            raise TripRequestError("That vendor couldn't be found. Pick one from the list or type a new name.") from exc
+
+    vendor_name = (options.get("vendor_name") or "").strip()
+    if not vendor_name:
+        raise TripRequestError("Tell us which vendor to collect from.")
+    vendor, _created = Vendor.objects.get_or_create(
+        name__iexact=vendor_name,
+        defaults={
+            "name": vendor_name,
+            "location_label": (options.get("vendor_location") or "").strip(),
+            "phone": _normalize(options["vendor_phone"]) if options.get("vendor_phone") else "",
+        },
+    )
+    return vendor
 
 
 def _apply_payment_source(trip, passenger, payment_method, options, total, promo_used):
@@ -245,8 +350,12 @@ def _normalize(phone):
     return normalize_phone(phone) if phone else ""
 
 
-def _notify_delivery_recipient(trip):
-    """WR-23: the recipient gets the drop-off code plus a live tracking link."""
+def _notify_delivery_parties(trip):
+    """
+    WR-23/25: each third party gets the code they need, plus a live tracking link. The sender is
+    texted the pickup code and the recipient the drop-off code, but only if they aren't the
+    booker — the booker sees both codes in their own app instead.
+    """
     import logging
 
     from accounts.services import _send_sms
@@ -254,23 +363,39 @@ def _notify_delivery_recipient(trip):
     from safety.services import share_url
 
     delivery = trip.delivery
-    share = TripShare.objects.create(trip=trip, created_by=trip.passenger, sent_to_phone=delivery.recipient_phone)
-    sender = trip.passenger.name or "Someone"
-    try:
-        _send_sms(
-            delivery.recipient_phone,
-            f"{sender} is sending you a package with WolbiRides. Give the driver code {delivery.dropoff_code} "
-            f"only when you receive it. Track it: {share_url(share)}",
-        )
-    except Exception:
-        logging.getLogger(__name__).exception("Failed to SMS delivery recipient for trip %s", trip.id)
+    booker_phone = _normalize(trip.passenger.real_phone)
+    booker = trip.passenger.name or "Someone"
+    texts = []
+    if delivery.sender_phone and delivery.sender_phone != booker_phone:
+        texts.append((delivery.sender_phone, "pickup"))
+    if delivery.recipient_phone and delivery.recipient_phone != booker_phone:
+        texts.append((delivery.recipient_phone, "dropoff"))
+    if not texts:
+        return
+    share = TripShare.objects.create(trip=trip, created_by=trip.passenger, sent_to_phone=texts[-1][0])
+    link = share_url(share)
+    for phone, role in texts:
+        if role == "pickup":
+            what = delivery.task_description or delivery.package_description or "an item"
+            message = (f"{booker} has booked a WolbiRides courier to collect from you: {what}. "
+                       f"Give the rider code {delivery.pickup_code} only when they collect it. Track it: {link}")
+        elif delivery.delivery_subtype == DeliveryDetail.Subtype.PARCEL:
+            message = (f"{booker} is sending you a package with WolbiRides. Give the rider code "
+                       f"{delivery.dropoff_code} only when you receive it. Track it: {link}")
+        else:
+            message = (f"{booker} has ordered something to be delivered to you with WolbiRides. Give the rider code "
+                       f"{delivery.dropoff_code} only when you receive it. Track it: {link}")
+        try:
+            _send_sms(phone, message)
+        except Exception:
+            logging.getLogger(__name__).exception("Failed to SMS delivery %s for trip %s", role, trip.id)
 
 
 # --- Dispatch -------------------------------------------------------------------------
 
 def start_dispatch_cascade(trip):
     """WR-17: a shareable request first tries to share (join a driver already heading
-    out, or pair with another rider still searching); otherwise normal dispatch."""
+    out, or pair with another passenger still searching); otherwise normal dispatch."""
     if trip.shareable and trip.status == Trip.Status.REQUESTED:
         from trips import pooling
 
@@ -302,10 +427,16 @@ def _dispatch(trip):
     if not candidates and meta.get("blocked_by_preference"):
         _handle_preference_block(trip)
         return None
+    if not candidates and trip.trip_type == Trip.Kind.DELIVERY:
+        # WR-26: nobody nearby took it, so ops arrange a courier rather than the passenger being told "no drivers".
+        reason = no_drivers_reason(trip, meta)
+        _log_event(trip, "no_drivers_found", {"reason": reason, "counts": meta.get("counts", {})})
+        send_to_admin(trip, "no_courier_accepted", detail=reason)
+        return None
     if not candidates:
         trip.status = Trip.Status.NO_DRIVERS_FOUND
         trip.save(update_fields=["status", "updated_at"])
-        _log_event(trip, "no_drivers_found")
+        _log_event(trip, "no_drivers_found", {"reason": no_drivers_reason(trip, meta), "counts": meta.get("counts", {})})
         _broadcast_trip_update(trip)
         from trips import pooling
 
@@ -317,16 +448,30 @@ def _dispatch(trip):
     return next_driver_id
 
 
+def no_drivers_reason(trip, meta):
+    """Why nobody could be offered the trip, as a short code the apps turn into plain words."""
+    c = meta.get("counts", {})
+    if not c.get("reporting_location"):
+        return "none_online"
+    if not c.get("verified_and_online"):
+        return "none_online"
+    if not c.get("free"):
+        return "all_busy"
+    if trip.trip_type == Trip.Kind.DELIVERY and not c.get("taking_deliveries"):
+        return "no_delivery_couriers"
+    return "already_offered"  # everyone eligible has already been offered and passed
+
+
 def order_candidates(trip, scored):
     """
     Returns (driver_user_ids_in_offer_order, meta).
 
-    - Drivers already heading to or carrying a rider are skipped (shared riders
+    - Drivers already heading to or carrying a passenger are skipped (shared passengers
       reach them through pooling instead).
     - Deliveries only go to drivers who opted in (WR-23).
-    - WR-19 driver-gender preference: only matching drivers, until the rider
+    - WR-19 driver-gender preference: only matching drivers, until the passenger
       says otherwise. If none is available, meta["blocked_by_preference"] is
-      set and the rider is asked; nobody is silently reassigned.
+      set and the passenger is asked; nobody is silently reassigned.
     - Drivers within FAIR_QUEUE_BAND_KM of the nearest count as equally close
       (the ETA cap). Inside that band, soft preferences and "drivers I've ridden
       with" rank first; otherwise it's nearest-first.
@@ -338,7 +483,8 @@ def order_candidates(trip, scored):
     from django.db.models import Count, Q
     from drivers.models import Driver
 
-    meta = {"blocked_by_preference": False, "fair_queue": False, "nearest_km": None, "distances": {}}
+    meta = {"blocked_by_preference": False, "fair_queue": False, "nearest_km": None, "distances": {},
+            "counts": {"reporting_location": len(scored)}}
     if not scored:
         return [], meta
     ids = [driver_id for _, driver_id in scored]
@@ -357,9 +503,12 @@ def order_candidates(trip, scored):
                 trips_as_driver__status=Trip.Status.COMPLETED, trips_as_driver__completed_at__gte=week_ago)),
         )
     }
+    meta["counts"]["verified_and_online"] = len(drivers)
     scored = [(dist, i) for dist, i in scored if i not in busy and i in drivers]
+    meta["counts"]["free"] = len(scored)
     if trip.trip_type == Trip.Kind.DELIVERY:
         scored = [(dist, i) for dist, i in scored if drivers[i].accepts_deliveries]
+        meta["counts"]["taking_deliveries"] = len(scored)
 
     prefs = trip.preferences or {}
     wanted_gender = prefs.get("preferred_driver_gender")
@@ -407,7 +556,7 @@ def _fairness_draw():
 
 
 def _handle_preference_block(trip):
-    """WR-19: no driver matching the rider's preference is free. Ask the rider,
+    """WR-19: no driver matching the passenger's preference is free. Ask the passenger,
     or (if they already chose to keep waiting) try again shortly."""
     from core.models import notify
     from trips.tasks import retry_preference_dispatch
@@ -418,19 +567,19 @@ def _handle_preference_block(trip):
             _log_event(trip, "preference_retry", {"attempt": attempts + 1})
             retry_preference_dispatch.apply_async(args=[str(trip.id)], countdown=30)
             return
-    trip.preference_status = Trip.PreferenceStatus.AWAITING_RIDER
+    trip.preference_status = Trip.PreferenceStatus.AWAITING_PASSENGER
     trip.save(update_fields=["preference_status", "updated_at"])
     _log_event(trip, "preference_unavailable")
     _broadcast_trip_update(trip)
-    notify(trip.passenger, "No matching driver free right now",
-           "Take the next available driver, or keep waiting for one that matches your preference.",
+    notify(trip.passenger, "No matching rider free right now",
+           "Take the next available rider, or keep waiting for one that matches your preference.",
            category="trip", link=f"/trip/{trip.id}")
 
 
 def preference_decision(trip, decision):
-    """Rider's answer when their preferred driver isn't available: 'any_driver' or 'keep_waiting'."""
+    """Passenger's answer when their preferred driver isn't available: 'any_driver' or 'keep_waiting'."""
     if trip.status != Trip.Status.MATCHING or trip.preference_status not in (
-        Trip.PreferenceStatus.AWAITING_RIDER, Trip.PreferenceStatus.KEEP_WAITING,
+        Trip.PreferenceStatus.AWAITING_PASSENGER, Trip.PreferenceStatus.KEEP_WAITING,
     ):
         raise TripFlowError("There's no decision waiting on this trip.")
     if decision == "any_driver":
@@ -450,8 +599,9 @@ def preference_decision(trip, decision):
     raise TripFlowError("decision must be 'any_driver' or 'keep_waiting'.")
 
 
-def _offer_to_driver(trip, driver_id, meta=None):
-    """Drivers see the job, never the rider's preferences or why they were chosen (WR-19)."""
+def _offer_payload(trip, timeout_seconds):
+    """The job as a driver sees it, whether pushed live or fetched via GET (offer_for_driver) —
+    never the passenger's preferences or why they were chosen (WR-19)."""
     from trips import pooling
 
     payload = {
@@ -461,15 +611,29 @@ def _offer_to_driver(trip, driver_id, meta=None):
         "fare_estimate": str(trip.fare_quote.total),
         "trip_type": trip.trip_type,
         "kind": trip.trip_type,  # legacy alias for older app builds
-        "timeout_seconds": DISPATCH_OFFER_TIMEOUT_SECONDS,
+        "timeout_seconds": timeout_seconds,
+        "expires_at": (timezone.now() + timezone.timedelta(seconds=timeout_seconds)).isoformat(),
     }
     if trip.trip_type == Trip.Kind.DELIVERY and hasattr(trip, "delivery"):
-        payload["package_description"] = trip.delivery.package_description
-        payload["package_size"] = trip.delivery.package_size
+        d = trip.delivery
+        payload.update({
+            "delivery_subtype": d.delivery_subtype,
+            "package_description": d.package_description,
+            "package_size": d.package_size,
+            "task_description": d.task_description,
+            "spend_limit": str(d.spend_limit) if d.spend_limit is not None else None,
+            "vendor_name": d.vendor.name if d.vendor_id else "",
+        })
     legs = pooling.offer_legs(trip)
     if legs:
         payload["pool_legs"] = legs
         payload["fare_estimate"] = str(sum(Decimal(l["fare"]) for l in legs if l["type"] == "pickup"))
+    return payload
+
+
+def _offer_to_driver(trip, driver_id, meta=None, timeout_seconds=None):
+    timeout_seconds = timeout_seconds or DISPATCH_OFFER_TIMEOUT_SECONDS
+    payload = _offer_payload(trip, timeout_seconds)
 
     async_to_sync(get_channel_layer().group_send)(
         f"driver.{driver_id}", {"type": "ride_request", "trip": payload},
@@ -479,12 +643,15 @@ def _offer_to_driver(trip, driver_id, meta=None):
     if meta.get("nearest_km") is not None and driver_id in meta.get("distances", {}):
         event["extra_km"] = round(meta["distances"][driver_id] - meta["nearest_km"], 3)
         event["fair_queue"] = meta.get("fair_queue", False)
+    if meta.get("admin_offer"):
+        event["admin_offer"] = True
+        event["admin_id"] = meta.get("admin_id")
     _log_event(trip, "offered_to_driver", event)
 
     from trips.tasks import check_dispatch_offer_timeout
 
     check_dispatch_offer_timeout.apply_async(
-        args=[str(trip.id), driver_id], countdown=DISPATCH_OFFER_TIMEOUT_SECONDS
+        args=[str(trip.id), driver_id], countdown=timeout_seconds
     )
 
 
@@ -495,8 +662,39 @@ def current_offered_driver_id(trip):
     (Redis online set, websocket group, offered_to_driver events), so this
     is the value to compare against — never the Driver row's own pk.
     """
-    event = trip.events.filter(event_type="offered_to_driver").order_by("-created_at").first()
+    event = _current_offer_event(trip)
     return (event.payload or {}).get("driver_id") if event else None
+
+
+def _current_offer_event(trip):
+    return trip.events.filter(event_type="offered_to_driver").order_by("-created_at").first()
+
+
+def offer_for_driver(driver_user_id):
+    """The offer (same shape _offer_to_driver pushes) currently pending this driver's response, or
+    None — fetchable directly so a driver who reopens the app (or never got the push at all, e.g.
+    Expo Go's lack of remote push) can still see and act on it, not only through the live message."""
+    from django.conf import settings
+
+    trips = (
+        Trip.objects.filter(status=Trip.Status.MATCHING)
+        .select_related("fare_quote", "delivery", "delivery__vendor")
+        .order_by("-requested_at")
+    )
+    for t in trips:
+        event = _current_offer_event(t)
+        if event and (event.payload or {}).get("driver_id") == str(driver_user_id):
+            is_admin = bool((event.payload or {}).get("admin_offer"))
+            timeout_seconds = settings.ADMIN_OFFER_TIMEOUT_SECONDS if is_admin else DISPATCH_OFFER_TIMEOUT_SECONDS
+            elapsed = (timezone.now() - event.created_at).total_seconds()
+            remaining = max(0, timeout_seconds - elapsed)
+            if remaining <= 0:
+                continue  # timed out; the Celery task just hasn't cleaned it up yet
+            payload = _offer_payload(t, timeout_seconds)
+            payload["timeout_seconds"] = round(remaining)  # time left, not the original window
+            payload["admin_offer"] = is_admin
+            return payload
+    return None
 
 
 def accept_trip(trip, driver):
@@ -504,7 +702,7 @@ def accept_trip(trip, driver):
 
     Locked and checked so only the driver currently offered the trip can
     accept, they must still be verified, and two accepts can't both win.
-    Riders waiting on this trip's shared group are matched to the same driver.
+    Passengers waiting on this trip's shared group are matched to the same driver.
     """
     from drivers.models import Driver
     from trips import pooling
@@ -516,7 +714,7 @@ def accept_trip(trip, driver):
         if current_offered_driver_id(trip) != str(driver.user_id):
             raise OfferNotValid("This trip isn't currently offered to you.")
         if driver.verification_status != Driver.VerificationStatus.VERIFIED:
-            raise OfferNotValid("Only verified drivers can accept trips.")
+            raise OfferNotValid("Only verified riders can accept trips.")
         trip.driver = driver
         trip.status = Trip.Status.MATCHED
         trip.matched_at = timezone.now()
@@ -531,28 +729,36 @@ def accept_trip(trip, driver):
         )
     except Exception:
         # Not critical: the driver's socket re-checks its tracking mode within 30s anyway.
-        logging.getLogger(__name__).warning("Couldn't push tracking mode to driver %s", driver.user_id)
+        logging.getLogger(__name__).warning("Couldn't push tracking mode to rider %s", driver.user_id)
     from core.models import notify
 
-    notify(trip.passenger, "Driver assigned", f"{driver.user.name or 'Your driver'} is on the way.",
+    notify(trip.passenger, "Rider assigned", f"{driver.user.name or 'Your rider'} is on the way.",
            category="trip", link=f"/trip/{trip.id}")
     for other in joined:
         _broadcast_trip_update(other)
-        notify(other.passenger, "Shared ride matched", f"{driver.user.name or 'Your driver'} is on the way.",
+        notify(other.passenger, "Shared ride matched", f"{driver.user.name or 'Your rider'} is on the way.",
                category="trip", link=f"/trip/{other.id}")
     return trip
 
 
 def decline_or_timeout(trip, driver_user_id):
-    """Driver declined, or their offer expired: cascade to the next candidate.
+    """Driver declined, or their offer expired.
 
-    A no-op unless the trip is still MATCHING *and* still offered to this driver.
+    A no-op unless the trip is still MATCHING *and* still offered to this driver. An organic
+    dispatch offer cascades to the next nearby candidate as before. An offer ops sent directly
+    to one driver has no "next candidate" to fall back to — it goes back to the ops queue so a
+    person decides what happens next, rather than silently searching nearby drivers for a job
+    ops deliberately chose not to auto-dispatch.
     """
     with transaction.atomic():
-        trip = Trip.objects.select_for_update().get(id=trip.id)
-        if trip.status != Trip.Status.MATCHING or current_offered_driver_id(trip) != str(driver_user_id):
+        trip = Trip.objects.select_for_update(of=("self",)).select_related("delivery").get(id=trip.id)
+        event = _current_offer_event(trip)
+        if trip.status != Trip.Status.MATCHING or not event or (event.payload or {}).get("driver_id") != str(driver_user_id):
             return None
+        is_admin_offer = bool((event.payload or {}).get("admin_offer"))
         _log_event(trip, "declined_or_timed_out", {"driver_id": str(driver_user_id)})
+    if is_admin_offer:
+        return _return_to_admin(trip, "driver_declined")
     return _dispatch(trip)
 
 
@@ -616,12 +822,12 @@ def mark_driver_arriving(trip):
 
     from core.models import notify
 
-    notify(trip.passenger, "Your driver is close by", "Head to your pickup point now.", category="trip", link=f"/trip/{trip.id}")
+    notify(trip.passenger, "Your rider is close by", "Head to your pickup point now.", category="trip", link=f"/trip/{trip.id}")
     return trip
 
 
 def check_and_mark_driver_arriving(driver_user_id, lat, lng):
-    """Called from location pings. A driver can have two waiting riders on a shared ride.
+    """Called from location pings. A driver can have two waiting passengers on a shared ride.
     Returns how many trips are still waiting for this driver's pickup, so the
     socket can skip the check for a while when there are none."""
     if lat is None or lng is None:
@@ -678,6 +884,10 @@ def confirm_dropoff(trip, code, photo_url=""):
 
 
 def cancel_trip(trip, cancelled_by, reason=""):
+    if (cancelled_by == "driver" and trip.trip_type == Trip.Kind.DELIVERY
+            and trip.status in (Trip.Status.MATCHED, Trip.Status.DRIVER_ARRIVING)):
+        # WR-26: the sender and recipient are counting on this. Ops find another courier; nobody is left stranded.
+        return _return_to_admin(trip, "driver_withdrew", reason)
     trip.status = Trip.Status.CANCELLED
     trip.cancelled_by = cancelled_by
     trip.cancel_reason = reason
@@ -695,7 +905,219 @@ def cancel_trip(trip, cancelled_by, reason=""):
         notify(trip.passenger, "Trip cancelled", reason or "Your trip was cancelled.", category="trip", link="/")
     if trip.driver and cancelled_by != "driver":
         notify(trip.driver.user, "Trip cancelled", reason or "The trip was cancelled.", category="trip", link="/")
+    elif not trip.driver:
+        # A pending offer (matching, not yet accepted) has no trip.driver yet — tell whoever it
+        # was offered to that it's gone, so their countdown doesn't sit there for nothing.
+        offered_id = current_offered_driver_id(trip)
+        if offered_id and cancelled_by != "driver":
+            from accounts.models import User
+
+            offered = User.objects.filter(id=offered_id).first()
+            if offered:
+                notify(offered, "Delivery no longer available", "That one was cancelled.", category="trip", link="/requests")
     return trip
+
+
+# --- WR-26: deliveries arranged by ops ------------------------------------------------
+
+def delivery_goes_to_admin_first(trip):
+    from django.conf import settings
+
+    return (trip.trip_type == Trip.Kind.DELIVERY and hasattr(trip, "delivery")
+            and trip.delivery.delivery_subtype in settings.DELIVERY_ADMIN_FIRST_SUBTYPES)
+
+
+def route_new_trip(trip):
+    """Where a fresh booking goes first: straight to nearby drivers, or, for errands and vendor
+    orders (a cash float, a third party, vague instructions), to ops to check and assign."""
+    if delivery_goes_to_admin_first(trip):
+        send_to_admin(trip, "review")
+        return None
+    return start_dispatch_cascade(trip)
+
+
+_QUEUE_WHY = {
+    "review": "Errands and vendor orders are checked by ops first.",
+    "no_courier_accepted": "No rider took it.",
+    "driver_withdrew": "The rider withdrew.",
+    "reassigned": "It was taken off its courier.",
+}
+
+
+def send_to_admin(trip, reason, detail=""):
+    """Puts a delivery in the ops queue (status: awaiting_assignment) and tells ops and the passenger."""
+    from django.contrib.auth import get_user_model
+
+    from core.models import notify
+
+    trip.status = Trip.Status.AWAITING_ASSIGNMENT
+    trip.save(update_fields=["status", "updated_at"])
+    _log_event(trip, "sent_to_admin", {"reason": reason, "detail": detail})
+    _broadcast_trip_update(trip)
+
+    d = trip.delivery
+    what = (d.task_description or d.package_description or "A delivery")[:80]
+    for staff in get_user_model().objects.filter(role__in=["admin", "support"], is_active=True):
+        notify(staff, "Delivery needs a courier",
+               f"{what}: {trip.pickup_label} to {trip.destination_label}. {_QUEUE_WHY.get(reason, '')}".strip(),
+               category="system", link="/deliveries")
+    if reason in ("driver_withdrew", "reassigned"):
+        body = "Your courier can't make it. We're finding you another one and will tell you as soon as they're assigned."
+    else:
+        body = "Our team is finding you a courier. We'll tell you as soon as one is assigned."
+    notify(trip.passenger, "We're arranging your delivery", body, category="trip", link=f"/trip/{trip.id}")
+
+
+def _return_to_admin(trip, reason, detail=""):
+    driver = trip.driver
+    trip.driver = None
+    trip.matched_at = None
+    trip.save(update_fields=["driver", "matched_at", "updated_at"])
+    if trip.delivery.external_courier_id:
+        trip.delivery.external_courier = None
+        trip.delivery.save(update_fields=["external_courier", "updated_at"])
+    if driver:
+        from core.models import notify
+
+        notify(driver.user, "Delivery reassigned", "Ops took this delivery off you.", category="trip", link="/")
+    send_to_admin(trip, reason, detail=detail)
+    return trip
+
+
+def _lock_awaiting(trip):
+    # of=("self",) locks only the trip row. Without it, Postgres refuses outright: a delivery is
+    # a reverse OneToOne, so a trip with none is a LEFT OUTER JOIN, and Postgres will not let
+    # FOR UPDATE reach the nullable side of one. select_related still runs, just unlocked.
+    trip = Trip.objects.select_for_update(of=("self",)).select_related("delivery").get(id=trip.id)
+    if trip.trip_type != Trip.Kind.DELIVERY:
+        raise AssignmentError("Only deliveries are arranged by ops.")
+    if trip.status != Trip.Status.AWAITING_ASSIGNMENT:
+        raise AssignmentError("This delivery isn't waiting for a courier.")
+    return trip
+
+
+def delivery_couriers_for(trip):
+    """Drivers ops can hand this delivery to: verified, online, taking deliveries and not already on a
+    trip. Nearest first when their live position is known."""
+    from drivers.models import Driver
+
+    busy = set(Trip.objects.filter(status__in=ACTIVE_STATUSES, driver__isnull=False).values_list("driver_id", flat=True))
+    drivers = (Driver.objects.filter(verification_status=Driver.VerificationStatus.VERIFIED, is_online=True,
+                                     accepts_deliveries=True).exclude(id__in=busy).select_related("user"))
+    try:
+        km = {uid: dist for dist, uid in async_to_sync(scored_candidate_drivers)(str(trip.zone_id), trip.pickup_lat, trip.pickup_lng)}
+    except Exception:
+        km = {}  # presence is best-effort; ops can still pick from the list
+    rows = [{
+        "driver_id": str(d.id), "name": d.user.name or "Rider", "phone": d.user.real_phone,
+        "distance_km": round(km[str(d.user_id)], 1) if str(d.user_id) in km else None,
+    } for d in drivers]
+    rows.sort(key=lambda r: (r["distance_km"] is None, r["distance_km"] or 0))
+    return rows
+
+
+def admin_offer_to_driver(trip, driver, admin):
+    """
+    WR-26: ops picks a driver for a delivery, but it isn't matched to them yet — it's *offered*,
+    the same as an organic dispatch offer, just aimed at the one driver ops chose rather than a
+    race among the nearest few. The driver gets the same accept/decline window (a longer one:
+    ADMIN_OFFER_TIMEOUT_SECONDS, not the snap organic one) and the same push, so it shows up on
+    their existing offer screen and countdown — nothing new for them to learn. Declining, or
+    letting it time out, returns it to the ops queue (decline_or_timeout) rather than the organic
+    cascade, since there's no "next nearest driver" ops meant to fall back to.
+    """
+    from django.conf import settings
+    from drivers.models import Driver
+
+    with transaction.atomic():
+        trip = _lock_awaiting(trip)
+        if driver.verification_status != Driver.VerificationStatus.VERIFIED:
+            raise AssignmentError("Only verified riders can take deliveries.")
+        if Trip.objects.filter(driver=driver, status__in=ACTIVE_STATUSES).exists():
+            raise AssignmentError(f"{driver.user.name or 'That rider'} is already on a trip.")
+        if offer_for_driver(str(driver.user_id)):
+            raise AssignmentError(f"{driver.user.name or 'That rider'} already has a delivery offer pending.")
+        trip.status = Trip.Status.MATCHING
+        trip.save(update_fields=["status", "updated_at"])
+        trip.delivery.external_courier = None
+        trip.delivery.save(update_fields=["external_courier", "updated_at"])
+    _broadcast_trip_update(trip)
+    _offer_to_driver(trip, str(driver.user_id), meta={"admin_offer": True, "admin_id": str(admin.id)},
+                      timeout_seconds=settings.ADMIN_OFFER_TIMEOUT_SECONDS)
+    from core.models import notify
+
+    d = trip.delivery
+    notify(driver.user, "New delivery request",
+           f"{(d.task_description or d.package_description or 'A delivery')[:80]}. Review it under Requests.",
+           category="trip", link="/requests")
+    return trip
+
+
+def assign_delivery_to_external(trip, courier, admin):
+    from core.models import notify
+
+    if not courier.active:
+        raise AssignmentError("That courier is marked inactive.")
+    with transaction.atomic():
+        trip = _lock_awaiting(trip)
+        trip.driver = None
+        trip.status = Trip.Status.MATCHED
+        trip.matched_at = timezone.now()
+        trip.save(update_fields=["driver", "status", "matched_at", "updated_at"])
+        trip.delivery.external_courier = courier
+        trip.delivery.save(update_fields=["external_courier", "updated_at"])
+        _log_event(trip, "assigned_external", {"courier_id": str(courier.id), "admin_id": str(admin.id)})
+    _broadcast_trip_update(trip)
+    notify(trip.passenger, "Courier assigned", f"{courier.name} is on the way to collect it.", category="trip", link=f"/trip/{trip.id}")
+    return trip
+
+
+def unassign_delivery(trip, admin):
+    """Ops take a delivery back off its courier (before pickup) and return it to the queue."""
+    with transaction.atomic():
+        # Same fix as _lock_awaiting: lock only the trip row, not the nullable delivery join.
+        trip = Trip.objects.select_for_update(of=("self",)).select_related("delivery").get(id=trip.id)
+        if trip.trip_type != Trip.Kind.DELIVERY or trip.status not in (Trip.Status.MATCHED, Trip.Status.DRIVER_ARRIVING):
+            raise AssignmentError("Only a delivery that hasn't been picked up yet can be taken off its courier.")
+        _log_event(trip, "unassigned_by_admin", {"admin_id": str(admin.id)})
+        return _return_to_admin(trip, "reassigned")
+
+
+def _require_external(trip):
+    if trip.trip_type != Trip.Kind.DELIVERY or not trip.delivery.external_courier_id:
+        raise TripFlowError("This delivery isn't with an external courier.")
+
+
+def admin_confirm_pickup(trip, admin, code="", by_phone=False):
+    """Ops record pickup for an external courier, who has no app: with the code the sender gave them, or after ops
+    checked it with the sender by phone. The code is never shown to ops; the courier reads it out."""
+    _require_external(trip)
+    if trip.status not in (Trip.Status.MATCHED, Trip.Status.DRIVER_ARRIVING):
+        raise TripFlowError("This delivery can't be picked up now.")
+    code = (code or "").strip()
+    if code:
+        if code != trip.delivery.pickup_code:
+            raise DeliveryCodeError("That pickup code doesn't match. Ask the courier to check it with the sender.")
+    elif not by_phone:
+        raise DeliveryCodeError("Enter the pickup code the courier was given, or confirm you checked it by phone.")
+    trip.delivery.picked_up_at = timezone.now()
+    trip.delivery.save(update_fields=["picked_up_at", "updated_at"])
+    _log_event(trip, "delivery_picked_up", {"by": "admin_code" if code else "admin_phone", "admin_id": str(admin.id)})
+    return _begin(trip)
+
+
+def admin_confirm_dropoff(trip, admin, code="", by_phone=False):
+    _require_external(trip)
+    if trip.status != Trip.Status.IN_PROGRESS:
+        raise TripFlowError("Confirm pickup before drop-off.")
+    code = (code or "").strip()
+    if code:
+        if code != trip.delivery.dropoff_code:
+            raise DeliveryCodeError("That code doesn't match. Ask the courier to check it with the recipient.")
+    elif not by_phone:
+        raise DeliveryCodeError("Enter the drop-off code the recipient gave the courier, or confirm you checked it by phone.")
+    _log_event(trip, "delivery_dropped_off", {"by": "admin_code" if code else "admin_phone", "admin_id": str(admin.id)})
+    return _finish(trip)
 
 
 # --- Settlement -----------------------------------------------------------------------
@@ -757,7 +1179,8 @@ def trip_list_queryset(user=None):
     from trips.models import Rating
 
     qs = Trip.objects.select_related(
-        "fare_quote", "driver__user", "passenger", "organization", "delivery", "pool_group",
+        "fare_quote", "driver__user", "passenger", "organization", "delivery", "delivery__vendor", "delivery__external_courier",
+        "pool_group",
     ).prefetch_related(
         Prefetch("driver__vehicles", queryset=Vehicle.objects.filter(active=True), to_attr="active_vehicles"),
     )

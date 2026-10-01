@@ -63,7 +63,7 @@ def raise_sos(trip, user, lat=None, lng=None, note=""):
         return recent
 
     raised_by_driver = bool(trip.driver and trip.driver.user_id == user.id)
-    who = "Driver" if raised_by_driver else "Passenger"
+    who = "Rider" if raised_by_driver else "Passenger"
     where = f" at {lat}, {lng}" if lat is not None and lng is not None else ""
     description = f"SOS raised by {who.lower()} {user.name or user.phone}{where}."
     if note:
@@ -101,7 +101,7 @@ def raise_sos(trip, user, lat=None, lng=None, note=""):
         try:
             _send_sms(zone.security_contact_phone,
                       f"WolbiRides SOS ({who.lower()}) in {zone.name}: {trip.pickup_label or 'pickup'} to "
-                      f"{trip.destination_label or 'destination'}.{link} Rider {trip.passenger.phone}.")
+                      f"{trip.destination_label or 'destination'}.{link} Passenger {trip.passenger.phone}.")
         except Exception:
             logger.exception("Failed to SMS zone security contact for SOS %s", incident.id)
 

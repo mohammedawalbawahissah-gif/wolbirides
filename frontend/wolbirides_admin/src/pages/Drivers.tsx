@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type Driver } from "../api/client";
 import { EmptyState, LoadingState, PageHeader, SortableTh, StatusBadge } from "../components/ui";
 import { useSortableData } from "../hooks/useSortableData";
+import "./Drivers.css";
 
 const STATUS_OPTIONS = ["", "pending", "verified", "suspended", "rejected"];
 
@@ -16,6 +17,7 @@ export default function Drivers() {
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   function load() {
     // eslint-disable-next-line react-hooks-js/set-state-in-effect -- resets loading/error state as the effect starts a fetch or subscription
@@ -25,7 +27,7 @@ export default function Drivers() {
     api
       .get<Driver[]>(url, { params })
       .then(({ data }) => setDrivers(data))
-      .catch(() => setError("Couldn't load drivers."));
+      .catch(() => setError("Couldn't load riders."));
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- search applies when the user submits, not on every keystroke
@@ -37,7 +39,7 @@ export default function Drivers() {
       await api.patch(`/admin/drivers/${driverId}/verify`, { action });
       load();
     } catch {
-      setError(`Couldn't ${action} that driver. Try again.`);
+      setError(`Couldn't ${action} that rider. Try again.`);
     } finally {
       setActingOn(null);
     }
@@ -52,12 +54,7 @@ export default function Drivers() {
   return (
     <div>
       <PageHeader
-        title="Drivers"
-        subtitle={
-          tab === "pending"
-            ? "Founding drivers awaiting the WR-07.2 compliance check before they can go online."
-            : "Every driver who has applied, regardless of status."
-        }
+        title="Riders"
       />
 
       <div className="btn-row" style={{ marginBottom: 16 }}>
@@ -65,7 +62,7 @@ export default function Drivers() {
           Pending review
         </button>
         <button className={tab === "all" ? "btn btn-primary" : "btn btn-ghost"} onClick={() => setTab("all")}>
-          All drivers
+          All riders
         </button>
       </div>
 
@@ -96,7 +93,7 @@ export default function Drivers() {
       {!drivers && !error && <LoadingState />}
 
       {drivers && drivers.length === 0 && (
-        <EmptyState message={tab === "pending" ? "No drivers waiting on review right now." : "No drivers match this filter."} />
+        <EmptyState message={tab === "pending" ? "No riders waiting on review right now." : "No riders match this filter."} />
       )}
 
       {drivers && drivers.length > 0 && (
@@ -104,7 +101,8 @@ export default function Drivers() {
           <table className="data-table">
             <thead>
               <tr>
-                <SortableTh<DriverRow> label="Driver" sortKey="nameKey" activeKey={sortKey} direction={direction} onSort={requestSort} />
+                <th aria-hidden="true"></th>
+                <SortableTh<DriverRow> label="Rider" sortKey="nameKey" activeKey={sortKey} direction={direction} onSort={requestSort} />
                 <th>Licence</th>
                 <th>Vehicle</th>
                 <SortableTh<DriverRow> label="Status" sortKey="verification_status" activeKey={sortKey} direction={direction} onSort={requestSort} />
@@ -113,7 +111,11 @@ export default function Drivers() {
             </thead>
             <tbody>
               {sorted.map((driver) => (
-                <tr key={driver.id}>
+                <Fragment key={driver.id}>
+                <tr className="driver-row" onClick={() => setExpanded(expanded === driver.id ? null : driver.id)}>
+                  <td className="driver-expand-cell">
+                    <span className={"driver-expand-chevron" + (expanded === driver.id ? " driver-expand-chevron-open" : "")} aria-hidden="true">›</span>
+                  </td>
                   <td>
                     <div>{driver.user?.name || "Unnamed"}</div>
                     <div className="mono">{driver.user?.phone}</div>
@@ -132,7 +134,7 @@ export default function Drivers() {
                   <td>
                     <StatusBadge status={driver.verification_status} />
                   </td>
-                  <td>
+                  <td onClick={(e) => e.stopPropagation()}>
                     <div className="btn-row">
                       {driver.verification_status !== "verified" && (
                         <button
@@ -164,11 +166,48 @@ export default function Drivers() {
                     </div>
                   </td>
                 </tr>
+                {expanded === driver.id && <ApplicationDetailRow driver={driver} />}
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
       )}
     </div>
+  );
+}
+
+function Doc({ label, url }: { label: string; url?: string }) {
+  if (!url) return <div className="driver-doc driver-doc-missing"><span>{label}</span><span>Not uploaded</span></div>;
+  const isImage = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url);
+  return (
+    <a className="driver-doc" href={url} target="_blank" rel="noopener noreferrer">
+      {isImage ? <img src={url} alt={label} className="driver-doc-thumb" /> : <div className="driver-doc-thumb driver-doc-file">File</div>}
+      <span>{label}</span>
+    </a>
+  );
+}
+
+/** Everything ops needs to actually look at before approving — not just the text fields the
+ * collapsed row shows, but the real documents, so nobody verifies a rider blind. */
+function ApplicationDetailRow({ driver }: { driver: Driver }) {
+  const vehicle = driver.vehicles[0];
+  return (
+    <tr className="driver-detail-row">
+      <td colSpan={6}>
+        <div className="driver-detail">
+          <div className="driver-detail-docs">
+            <Doc label="Licence photo" url={driver.licence_document} />
+            <Doc label="Vehicle photo" url={vehicle?.photo} />
+            <Doc label="Vehicle registration" url={vehicle?.registration_document} />
+          </div>
+          <div className="driver-detail-info">
+            <div><span>Emergency contact</span><strong>{driver.emergency_contact_name || "—"}{driver.emergency_contact_phone ? ` · ${driver.emergency_contact_phone}` : ""}</strong></div>
+            <div><span>Paid by</span><strong>{driver.payout_provider === "hubtel" ? "Hubtel" : "MTN MoMo"}{driver.payout_phone ? ` · ${driver.payout_phone}` : " · account phone"}</strong></div>
+            <div><span>Vehicle type</span><strong>{vehicle?.vehicle_type?.replace("_", " ") || "—"}</strong></div>
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }

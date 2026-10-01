@@ -1,0 +1,7 @@
+.rating-card { text-align: center; max-width: 340px; }
+.rating-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.rating-stars { display: flex; justify-content: center; gap: 6px; margin-bottom: 16px; }
+.star { background: none; border: none; font-size: 30px; color: var(--line); cursor: pointer; padding: 0; transition: transform 0.12s ease, color 0.12s ease; }
+.star:hover { transform: scale(1.15); color: var(--gold-soft); }
+.star:active { transform: scale(0.95); }
+.star-filled { color: var(--gold); }

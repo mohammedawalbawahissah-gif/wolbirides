@@ -9,6 +9,7 @@ import SignUp from "./pages/SignUp";
 
 // Each dashboard page loads on first visit, so charts (Overview) and maps (Incidents)
 // aren't downloaded at sign-in.
+const Deliveries = lazy(() => import("./pages/Deliveries"));
 const Drivers = lazy(() => import("./pages/Drivers"));
 const Incidents = lazy(() => import("./pages/Incidents"));
 const Bundles = lazy(() => import("./pages/Bundles"));
@@ -44,6 +45,7 @@ export default function App() {
           >
             <Route index element={<Overview />} />
             <Route path="drivers" element={<Drivers />} />
+            <Route path="deliveries" element={<Deliveries />} />
             <Route path="trips" element={<Trips />} />
             <Route path="incidents" element={<Incidents />} />
             <Route path="payouts" element={<Payouts />} />

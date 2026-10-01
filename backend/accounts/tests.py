@@ -87,7 +87,7 @@ class PasswordResetTests(TestCase):
 
 
 class ListShapeTests(TestCase):
-    """Every rider app reads these as plain arrays (a paginated object blanked the web home page)."""
+    """Every passenger app reads these as plain arrays (a paginated object blanked the web home page)."""
 
     def test_personal_lists_are_plain_arrays_and_not_truncated(self):
         from accounts.models import SavedAddress

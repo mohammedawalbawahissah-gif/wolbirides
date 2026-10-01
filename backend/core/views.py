@@ -178,6 +178,14 @@ class NotificationPreferencesView(APIView):
 
 # --- AI Assistant (role-aware, server-side key) -------------------------
 
+# The three kinds of people, in the words the app uses everywhere. The model is told them outright so it
+# never calls a rider a "driver" or a passenger a "rider".
+ASSISTANT_TERMS = (
+    "\n\nTerminology (use these words exactly, and never any others for these people): a PASSENGER books "
+    "rides and deliveries; a RIDER is the person who carries them out (never call them a driver); an ADMIN is "
+    "a member of the WolbiRides team."
+)
+
 ASSISTANT_SYSTEM_PROMPTS = {
     "passenger": (
         "You are the WolbiRides in-app assistant for a passenger using the "
@@ -205,7 +213,7 @@ ASSISTANT_SYSTEM_PROMPTS = {
         "guessing at coordinates."
     ),
     "driver": (
-        "You are the WolbiRides in-app assistant for a founding driver on the "
+        "You are the WolbiRides in-app assistant for a founding rider on the "
         "UDS campus pilot. Help with going online/offline, understanding "
         "earnings (gross fare, not take-home pay yet), the verification process, "
         "and app features. Be brief and concrete."
@@ -213,11 +221,12 @@ ASSISTANT_SYSTEM_PROMPTS = {
     "admin": (
         "You are the WolbiRides ops-console assistant for an admin or support "
         "agent running the UDS pilot. Help interpret dashboard metrics, the "
-        "driver verification workflow, incident severity levels (P0-P3), and "
+        "rider verification workflow, incident severity levels (P0-P3), and "
         "general ops questions. Be brief and concrete."
     ),
 }
 ASSISTANT_SYSTEM_PROMPTS["support"] = ASSISTANT_SYSTEM_PROMPTS["admin"]
+ASSISTANT_SYSTEM_PROMPTS = {role: prompt + ASSISTANT_TERMS for role, prompt in ASSISTANT_SYSTEM_PROMPTS.items()}
 
 # WR-15: lets the assistant draft a bookable trip rather than just describing
 # one in prose — the frontend renders a tool_use response as a confirmable

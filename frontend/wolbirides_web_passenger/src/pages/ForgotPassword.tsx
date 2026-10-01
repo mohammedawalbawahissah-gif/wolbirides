@@ -55,7 +55,6 @@ export default function ForgotPassword() {
       <h2>Reset your password</h2>
       {step === "email" ? (
         <form onSubmit={sendCode}>
-          <p className="auth-subtitle">Enter the email you signed up with and we'll send you a 6-digit code.</p>
           <label htmlFor="email">Email address</label>
           <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             autoComplete="email" required autoFocus />
@@ -66,15 +65,12 @@ export default function ForgotPassword() {
         </form>
       ) : (
         <form onSubmit={reset}>
-          <p className="auth-subtitle">{info} Codes expire after 5 minutes.</p>
+          <p className="auth-subtitle">{info}</p>
           <label htmlFor="code">Code from the email</label>
           <input id="code" inputMode="numeric" maxLength={6} value={code} autoComplete="one-time-code"
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} required autoFocus />
           <label htmlFor="new-password">New password</label>
           <PasswordField id="new-password" value={password} onChange={setPassword} autoComplete="new-password" />
-          <p className="auth-subtitle" style={{ marginTop: -4 }}>
-            At least 8 characters, not all numbers, and not a common password.
-          </p>
           {error && <div className="auth-error">{error}</div>}
           <button className="btn btn-primary btn-block" type="submit" disabled={busy || code.length !== 6 || password.length < 8}>
             {busy ? "Saving…" : "Set new password and sign in"}

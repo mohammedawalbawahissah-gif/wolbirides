@@ -23,7 +23,7 @@ class Partner(TimeStampedModel):
     lat = models.DecimalField(max_digits=9, decimal_places=6)
     lng = models.DecimalField(max_digits=9, decimal_places=6)
     address = models.CharField(max_length=255, blank=True)
-    offer_text = models.CharField(max_length=200, blank=True, help_text='Shown to riders, e.g. "10% off with code WAAKYE10"')
+    offer_text = models.CharField(max_length=200, blank=True, help_text='Shown to passengers, e.g. "10% off with code WAAKYE10"')
     contact_name = models.CharField(max_length=150, blank=True)
     contact_phone = models.CharField(max_length=20, blank=True)
     active = models.BooleanField(default=True)
@@ -76,8 +76,8 @@ class PromoRedemption(TimeStampedModel):
 class SponsoredPlacement(TimeStampedModel):
     """
     WR-24: a clearly labelled sponsored card, sold directly to a local business.
-    Every rider in the zone sees the same placement. There is no per-rider
-    targeting, and no rider data is used to choose what's shown.
+    Every passenger in the zone sees the same placement. There is no per-passenger
+    targeting, and no passenger data is used to choose what's shown.
     """
 
     zone = models.ForeignKey("zones.ServiceZone", on_delete=models.CASCADE, null=True, blank=True,

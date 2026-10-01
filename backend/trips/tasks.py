@@ -23,7 +23,7 @@ def check_dispatch_offer_timeout(trip_id, offered_driver_id):
 
 @shared_task
 def retry_preference_dispatch(trip_id):
-    """WR-19: the rider chose to keep waiting for a driver matching their preference."""
+    """WR-19: the passenger chose to keep waiting for a driver matching their preference."""
     from trips.models import Trip
     from trips.services import _dispatch
 

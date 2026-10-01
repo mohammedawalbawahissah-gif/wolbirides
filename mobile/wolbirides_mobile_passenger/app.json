@@ -18,14 +18,22 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.wolbi.wolbirides"
+      "package": "com.wolbi.wolbirides",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "apiBaseUrl": "http://172.20.10.3:8001/api",
-      "wsBaseUrl": "ws://172.20.10.3:8001"
+      "wsBaseUrl": "ws://172.20.10.3:8001",
+      "eas": {
+        "projectId": "dc4e7b90-ab4c-4a79-a0e1-c765dbefc0d6"
+      }
     },
     "plugins": [
       [
@@ -43,6 +51,7 @@
           "cameraPermission": "WolbiRides uses the camera only when you take a photo for your profile photo."
         }
       ]
-    ]
+    ],
+    "owner": "mohammedawal"
   }
 }

@@ -2,16 +2,34 @@
 
 Campus-first yellow-yellow ride-hailing for UDS and Tamale, by Wolbi Technologies.
 
+## Who's who (use these words everywhere people read)
+
+There are three kinds of people, and each has exactly one name in the apps, messages and admin screens:
+
+| Word | Who | Where they work |
+|---|---|---|
+| **Passenger** | Books rides and deliveries (rides, parcels, errands, vendor orders) | Passenger web and mobile apps |
+| **Rider** | Carries the ride or delivery out. Applies, is verified, goes online | Rider web and mobile apps |
+| **Admin** | The WolbiRides team: verifies riders, arranges deliveries, handles incidents and support | Admin dashboard |
+
+Never write "driver" for a rider, or "rider" for a passenger. An **external courier** is a person ops hand a
+delivery to who isn't a WolbiRides rider (no app); they are recorded by ops, not a role.
+
+**In code, "rider" is still called `driver`.** The `Driver` model, `/api/drivers/...`, `role="driver"`,
+`driver_detail`, the `wolbirides_*_driver` folders and the app bundle IDs keep that name on purpose: renaming them
+would break the database, URLs, saved sessions and the app store listing, and nobody sees them. Only what people
+read (screens, notifications, SMS, errors, labels) says "rider". When you add text for people, say rider.
+
 | Part | Path | Stack |
 |---|---|---|
 | Backend API, realtime, jobs | `backend/` | Django + DRF, Channels (websockets), Celery, PostgreSQL, Redis |
-| Rider web app | `frontend/wolbirides_web_passenger/` | React + TypeScript (Vite) |
-| Driver web app | `frontend/wolbirides_web_driver/` | React + TypeScript (Vite) |
+| Passenger web app | `frontend/wolbirides_web_passenger/` | React + TypeScript (Vite) |
+| Rider web app | `frontend/wolbirides_web_driver/` | React + TypeScript (Vite) |
 | Admin dashboard | `frontend/wolbirides_admin/` | React + TypeScript (Vite) |
-| Rider mobile app | `mobile/wolbirides_mobile_passenger/` | React Native (Expo SDK 57) |
-| Driver mobile app | `mobile/wolbirides_mobile_driver/` | React Native (Expo SDK 57) |
+| Passenger mobile app | `mobile/wolbirides_mobile_passenger/` | React Native (Expo SDK 57) |
+| Rider mobile app | `mobile/wolbirides_mobile_driver/` | React Native (Expo SDK 57) |
 
-Rider and driver apps have the same features on web and mobile. The only intended differences:
+Passenger and rider apps have the same features on web and mobile. The only intended differences:
 the public "follow my trip" page is web-only; background GPS, push notifications and SOS saved
 across restarts are mobile-only.
 
@@ -25,8 +43,8 @@ docker compose up --build
 
 | App | URL |
 |---|---|
-| Rider web | http://localhost:5174 |
-| Driver web | http://localhost:5175 |
+| Passenger web | http://localhost:5174 |
+| Rider web | http://localhost:5175 |
 | Admin | http://localhost:5176 |
 | API | http://localhost:8001/api |
 | Django admin (local only) | http://localhost:8001/admin/ |

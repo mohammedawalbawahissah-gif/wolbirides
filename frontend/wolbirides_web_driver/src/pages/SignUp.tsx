@@ -45,11 +45,10 @@ export default function SignUp() {
   }
 
   return (
-    <AuthLayout tagline="Drive with WolbiRides.">
+    <AuthLayout tagline="Earn with WolbiRides.">
       {step === "details" ? (
         <>
-          <h2>Create your driver account</h2>
-          <p className="auth-subtitle">We'll email you a code to verify it's really you.</p>
+          <h2>Create your rider account</h2>
           <form onSubmit={handleRequestCode}>
             <label htmlFor="name">Full name</label>
             <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
@@ -105,7 +104,7 @@ export default function SignUp() {
         </>
       )}
       <div className="auth-switch">
-        Already driving with us? <Link to="/signin">Sign in</Link>
+        Already a WolbiRides rider? <Link to="/signin">Sign in</Link>
       </div>
     </AuthLayout>
   );

@@ -79,7 +79,6 @@ export default function Zones() {
     <div>
       <PageHeader
         title="Service zones"
-        subtitle="Fare configuration and pickup points per zone."
       />
 
       <div className="btn-row" style={{ marginBottom: 16 }}>

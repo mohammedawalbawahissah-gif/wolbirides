@@ -11,6 +11,8 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
   const [plateNumber, setPlateNumber] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
+  const [payoutProvider, setPayoutProvider] = useState<"momo" | "hubtel">("momo");
+  const [payoutPhone, setPayoutPhone] = useState("");
   // Same fields the web application collects; the documents are what ops verifies (WR-07.2).
   const [licenceExpiry, setLicenceExpiry] = useState("");
   const [docs, setDocs] = useState<Partial<Record<UploadKind, string>>>({});
@@ -47,6 +49,8 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
         vehicle_registration_document: docs.vehicle_registration_document,
         emergency_contact_name: emergencyName,
         emergency_contact_phone: emergencyPhone,
+        payout_provider: payoutProvider,
+        payout_phone: payoutPhone.trim() || undefined,
       });
       onApplied();
     } catch {
@@ -59,11 +63,7 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={typography.h1}>Apply to drive</Text>
-        <Text style={[typography.muted, styles.subtitle]}>
-          Founding drivers get priority ride access and reduced platform fees (WR-07.1). Ops
-          reviews your documents before you can go online.
-        </Text>
+        <Text style={typography.h1}>Apply to become a rider</Text>
 
         <Card>
           <FieldLabel>Commercial rider licence number</FieldLabel>
@@ -81,6 +81,21 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
           <DocumentRow label="Vehicle registration document" url={docs.vehicle_registration_document}
             busy={uploading === "vehicle_registration_document"} onPick={(src) => upload("vehicle_registration_document", src)} allowPdf />
 
+          <FieldLabel>Get paid by</FieldLabel>
+          <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm }}>
+            {(["momo", "hubtel"] as const).map((p) => (
+              <TouchableOpacity key={p} style={[styles.providerChip, payoutProvider === p && styles.providerChipOn]}
+                onPress={() => setPayoutProvider(p)}>
+                <Text style={[styles.providerChipText, payoutProvider === p && styles.providerChipTextOn]}>
+                  {p === "momo" ? "MTN MoMo" : "Hubtel"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <FieldLabel>Number to pay out to (optional)</FieldLabel>
+          <TextField value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="Defaults to your account phone" />
+          <Text style={[typography.muted, { marginTop: -4, marginBottom: spacing.sm }]}>Only if your mobile money wallet is on a different number. Leave blank to use the number you signed up with.</Text>
+
           <FieldLabel>Emergency contact name</FieldLabel>
           <TextField value={emergencyName} onChangeText={setEmergencyName} />
 
@@ -94,7 +109,7 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
         </Card>
 
         <Text style={styles.footnote}>
-          Documents go straight to WolbiRides ops for verification and aren't shown to riders.
+          Documents go straight to WolbiRides ops for verification and aren't shown to passengers.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -129,6 +144,10 @@ const styles = StyleSheet.create({
   docState: { fontSize: 12.5, color: colors.inkMuted },
   docLink: { color: colors.navyInk, fontWeight: "700", textDecorationLine: "underline", fontSize: 13 },
   thumb: { width: 44, height: 44, borderRadius: 6 },
+  providerChip: { flex: 1, borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingVertical: 8, alignItems: "center" },
+  providerChipOn: { backgroundColor: colors.navyInk, borderColor: colors.navyInk },
+  providerChipText: { fontSize: 13.5, color: colors.inkMuted, fontWeight: "600" },
+  providerChipTextOn: { color: "#FFFFFF" },
   safeArea: { flex: 1, backgroundColor: colors.paper },
   content: { padding: spacing.lg },
   subtitle: { marginBottom: spacing.lg, lineHeight: 19 },

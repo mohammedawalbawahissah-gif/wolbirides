@@ -23,7 +23,7 @@ export default function SOSButton({ tripId }: { tripId: string }) {
 
   // PRD WR-18: SOS must survive poor connectivity. A failed send is kept and
   // retried aggressively (every few seconds, and the moment the browser comes
-  // back online) until it lands, without the rider pressing anything again.
+  // back online) until it lands, without the passenger pressing anything again.
   async function send() {
     setSending(true);
     setError(null);

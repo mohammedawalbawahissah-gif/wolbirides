@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { api, type ServiceZone } from "../api/client";
+import { useDispatchState } from "../components/DispatchLayer";
 import { useDriverContext } from "../components/DriverGate";
-import { useDriverDispatch } from "../hooks/useDriverDispatch";
-import OfferModal from "../components/OfferModal";
 import { Card, EmptyState, ErrorBanner } from "../components/ui";
 import { colors, spacing, typography } from "../theme";
 import type { MainTabScreenProps } from "../navigation/types";
@@ -27,17 +26,23 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If the server takes the driver offline (suspension, or offline elsewhere), reload their profile
-  // so the screen shows the real state and pinging stops.
-  const reloadDriver = useCallback(() => {
-    api.get("/drivers/me").then(({ data }) => setDriver(data)).catch(() => {});
-  }, [setDriver]);
+  // The dispatch connection lives in DispatchLayer (mounted in DriverGate) so it keeps
+  // running on every tab, not just this one.
+  const { connected, locationError, backgroundModeActive } = useDispatchState();
+  const [savingDeliveries, setSavingDeliveries] = useState(false);
 
-  const { connected, offer, locationError, backgroundModeActive, clearOffer } = useDriverDispatch(
-    zone?.id ?? driver.current_zone,
-    driver.verification_status === "verified" && driver.is_online,
-    reloadDriver,
-  );
+  async function toggleDeliveries() {
+    setSavingDeliveries(true);
+    setError(null);
+    try {
+      const { data } = await api.patch("/drivers/me", { accepts_deliveries: !driver.accepts_deliveries });
+      setDriver(data);
+    } catch {
+      setError("Couldn't update that. Try again.");
+    } finally {
+      setSavingDeliveries(false);
+    }
+  }
 
   async function toggleOnline() {
     if (!zone) return;
@@ -50,24 +55,6 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
       setError(err?.response?.data?.detail || "Couldn't update your status.");
     } finally {
       setToggling(false);
-    }
-  }
-
-  async function acceptOffer(tripId: string) {
-    try {
-      await api.post(`/trips/${tripId}/accept`);
-      clearOffer();
-      navigation.navigate("ActiveTrip", { tripId });
-    } catch {
-      clearOffer();
-    }
-  }
-
-  async function declineOffer(tripId: string) {
-    try {
-      await api.post(`/trips/${tripId}/decline`);
-    } finally {
-      clearOffer();
     }
   }
 
@@ -101,16 +88,27 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
         </TouchableOpacity>
       </Card>
 
+      <Card style={[styles.statusCard, driver.accepts_deliveries && styles.statusCardOnline]}>
+        <Text style={[styles.statusLabel, { flex: 1 }]}>{driver.accepts_deliveries ? "Taking deliveries" : "Not taking deliveries"}</Text>
+        <TouchableOpacity
+          style={[styles.toggle, driver.accepts_deliveries && styles.toggleOn]}
+          onPress={toggleDeliveries}
+          disabled={savingDeliveries}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: !!driver.accepts_deliveries }}
+          accessibilityLabel="Take deliveries"
+        >
+          <View style={[styles.toggleKnob, driver.accepts_deliveries && styles.toggleKnobOn]} />
+        </TouchableOpacity>
+      </Card>
+
       {locationError && <ErrorBanner message={locationError} />}
       {error && <ErrorBanner message={error} />}
 
       {!driver.is_online && (
         <Card>
           <Text style={styles.hintTitle}>Ready to start earning?</Text>
-          <Text style={styles.hintBody}>
-            Go online to start receiving ride requests in {zone?.name ?? "your zone"}. For the
-            most reliable location tracking, allow "Always" location access when prompted.
-          </Text>
+          <Text style={styles.hintBody}>For the most reliable location tracking, allow "Always" location access when prompted.</Text>
         </Card>
       )}
 
@@ -128,9 +126,6 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
         </View>
       </Card>
 
-      {offer && (
-        <OfferModal offer={offer} onAccept={() => acceptOffer(offer.trip_id)} onDecline={() => declineOffer(offer.trip_id)} />
-      )}
     </ScrollView>
   );
 }

@@ -99,7 +99,7 @@ class DriverLocationConsumer(AsyncJsonWebsocketConsumer):
     async def _send_tracking_mode(self, mode=None):
         """
         Battery: tell the app how hard to track. "active" (precise, every 5s) while
-        heading to or carrying a rider; "idle" (every 15s, lighter GPS) while waiting
+        heading to or carrying a passenger; "idle" (every 15s, lighter GPS) while waiting
         for work. Sent on connect, whenever it changes, and when a trip is accepted.
         """
         mode = mode or ("active" if await self._has_active_trip() else "idle")
@@ -158,7 +158,7 @@ class TripConsumer(AsyncJsonWebsocketConsumer):
     """
     ws /ws/trip/<trip_id>/
 
-    Live status updates for one trip. Only the rider, the assigned driver, or
+    Live status updates for one trip. Only the passenger, the assigned driver, or
     admin/support may subscribe (same rule as the HTTP API, via
     trips/services.py::user_can_access_trip).
     """

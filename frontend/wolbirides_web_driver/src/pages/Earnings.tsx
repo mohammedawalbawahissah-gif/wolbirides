@@ -16,7 +16,6 @@ export default function Earnings() {
     <div>
       <div className="page-heading">
         <h1>Earnings</h1>
-        <p>Computed live from your completed trips.</p>
       </div>
 
       {!earnings && <div className="empty-state">Loading…</div>}

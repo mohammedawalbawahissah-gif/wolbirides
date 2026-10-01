@@ -39,8 +39,9 @@ export default function DriverPaymentPanel({ tripId, fare, paymentMethod, onDone
     }
   }
 
+  const PROVIDER_NAME: Record<string, string> = { momo: "MTN MoMo", hubtel: "Hubtel" };
   const paid = prepaid || payment?.status === "success";
-  const momoPending = payment?.method === "momo" && payment.status === "pending";
+  const mobileMoneyPending = (payment?.method === "momo" || payment?.method === "hubtel") && payment.status === "pending";
 
   return (
     <Card style={{ marginTop: spacing.md, gap: spacing.sm }}>
@@ -48,14 +49,16 @@ export default function DriverPaymentPanel({ tripId, fare, paymentMethod, onDone
       {paid ? (
         <Text style={{ color: colors.success, fontWeight: "600" }}>
           {prepaid ? "Prepaid. Don't collect cash; it's in your weekly payout."
-            : payment!.method === "momo" ? `Paid GH₵${payment!.amount} by MoMo. Don't collect cash.`
-            : `Cash GH₵${payment!.amount} recorded.`}
+            : payment!.method === "cash" ? `Cash GH₵${payment!.amount} recorded.`
+            : `Paid GH₵${payment!.amount} by ${PROVIDER_NAME[payment!.method] ?? payment!.method}. Don't collect cash.`}
         </Text>
-      ) : momoPending ? (
-        <Text style={typography.body}>The rider is approving a MoMo payment. Wait a moment before collecting cash.</Text>
+      ) : mobileMoneyPending ? (
+        <Text style={typography.body}>
+          The passenger is approving a {PROVIDER_NAME[payment!.method] ?? "mobile money"} payment. Wait a moment before collecting cash.
+        </Text>
       ) : (
         <>
-          <Text style={typography.body}>Collect GH₵{fare} in cash, or wait while the rider pays by MoMo.</Text>
+          <Text style={typography.body}>Collect GH₵{fare} in cash, or wait while the passenger pays by mobile money.</Text>
           {error && <ErrorBanner message={error} />}
           <Button title={busy ? "Saving…" : "Cash received"} variant="success" onPress={confirmCash} loading={busy} />
         </>

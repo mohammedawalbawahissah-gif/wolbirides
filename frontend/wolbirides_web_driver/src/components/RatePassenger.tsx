@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { api } from "../api/client";
 
-/** Drivers rate riders too (the backend has always supported both directions). */
-export default function RateRider({ tripId, alreadyRated }: { tripId: string; alreadyRated?: boolean }) {
+/** Drivers rate passengers too (the backend has always supported both directions). */
+export default function RatePassenger({ tripId, alreadyRated }: { tripId: string; alreadyRated?: boolean }) {
   const [score, setScore] = useState(0);
   const [done, setDone] = useState(!!alreadyRated);
   const [busy, setBusy] = useState(false);
@@ -22,7 +22,7 @@ export default function RateRider({ tripId, alreadyRated }: { tripId: string; al
   if (done) return null;
   return (
     <div className="card" style={{ marginTop: 16 }}>
-      <h2 className="side-card-title">How was this rider?</h2>
+      <h2 className="side-card-title">How was this passenger?</h2>
       <div role="radiogroup" aria-label="Rating" style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} role="radio" aria-checked={score === n} aria-label={`${n} star${n > 1 ? "s" : ""}`}

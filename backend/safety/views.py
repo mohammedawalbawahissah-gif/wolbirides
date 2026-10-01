@@ -22,7 +22,7 @@ class TripShareView(APIView):
         trip = get_object_or_404(Trip, id=trip_id)
         if trip.passenger_id != request.user.id:
             return Response({"detail": "Only the passenger can share this trip."}, status=status.HTTP_403_FORBIDDEN)
-        if trip.status not in ("requested", "matching", *services.ACTIVE_STATUSES):
+        if trip.status not in ("requested", "matching", "awaiting_assignment", *services.ACTIVE_STATUSES):
             return Response({"detail": "Only active trips can be shared."}, status=status.HTTP_409_CONFLICT)
         send = bool(request.data.get("send_to_contact"))
         share = services.create_share(trip, request.user, send_to_contact=send)

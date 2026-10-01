@@ -24,7 +24,6 @@ export default function History() {
     <div>
       <div className="page-heading">
         <h1>Your rides</h1>
-        <p>Past trips and receipts.</p>
       </div>
 
       {trips == null && (
@@ -43,9 +42,9 @@ export default function History() {
 
       {trips && trips.length === 0 && (
         <div className="empty-state history-empty">
-          <div className="history-empty-icon">🚕</div>
+          <div className="history-empty-icon">🛺</div>
           <p>No rides yet — your first trip will show up here.</p>
-          <button className="btn btn-gold" onClick={() => navigate("/")}>Book a ride</button>
+          <button className="btn btn-gold" onClick={() => navigate("/book", { state: { initialKind: "ride" } })}>Book a ride</button>
         </div>
       )}
 
@@ -66,13 +65,16 @@ export default function History() {
                 {trip.fare_final ? `GH₵${trip.fare_final}` : trip.fare_quote ? `GH₵${trip.fare_quote.total}` : "—"}
               </div>
             </button>
-            {/* WR-13: one-tap re-request from any past trip. Pre-fills the route; the rider still confirms. */}
+            {/* WR-13: one-tap re-request from any past trip. Pre-fills the route; the passenger still confirms. */}
             <button className="btn btn-ghost history-again"
-              onClick={() => navigate("/", { state: { rebook: {
-                pickup: { lat: Number(trip.pickup_lat), lng: Number(trip.pickup_lng), label: trip.pickup_label },
-                destination: { lat: Number(trip.destination_lat), lng: Number(trip.destination_lng), label: trip.destination_label },
-              } } })}>
-              Ride again
+              onClick={() => navigate("/book", { state: {
+                initialKind: trip.trip_type === "delivery" ? "delivery" : "ride",
+                rebook: {
+                  pickup: { lat: Number(trip.pickup_lat), lng: Number(trip.pickup_lng), label: trip.pickup_label },
+                  destination: { lat: Number(trip.destination_lat), lng: Number(trip.destination_lng), label: trip.destination_label },
+                },
+              } })}>
+              {trip.trip_type === "delivery" ? "Send again" : "Ride again"}
             </button>
           </div>
         ))}

@@ -125,9 +125,6 @@ export function EmergencyContactCard() {
   return (
     <Card style={{ marginBottom: spacing.md }}>
       <Text style={typography.h2}>Emergency contact</Text>
-      <Text style={[typography.muted, { marginBottom: spacing.md }]}>
-        If you press SOS during a ride, we'll text this person your location.
-      </Text>
       <FieldLabel>Name</FieldLabel>
       <TextField value={name} onChangeText={setName} placeholder="e.g. Mum" />
       <FieldLabel>Phone number</FieldLabel>

@@ -15,7 +15,7 @@ const destIcon = new L.DivIcon({
 });
 const driverIcon = new L.DivIcon({
   className: "trip-map-pin trip-map-pin-driver",
-  html: '<span>🚕</span>',
+  html: '<span>🛺</span>',
   iconSize: [30, 30],
 });
 

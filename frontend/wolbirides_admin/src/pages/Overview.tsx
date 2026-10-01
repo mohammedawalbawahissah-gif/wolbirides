@@ -36,7 +36,6 @@ export default function Overview() {
     <div>
       <PageHeader
         title="Overview"
-        subtitle="What needs attention right now, pilot zone by pilot zone."
       />
 
       {error && <EmptyState message={error} />}
@@ -45,9 +44,9 @@ export default function Overview() {
       {summary && (
         <>
           <div className="kpi-grid">
-            <KpiCard label="Drivers online" value={summary.drivers_online} />
+            <KpiCard label="Riders online" value={summary.drivers_online} />
             <KpiCard
-              label="Pending driver verifications"
+              label="Pending rider verifications"
               value={summary.drivers_pending_verification}
               tone={summary.drivers_pending_verification > 0 ? "warning" : "neutral"}
             />

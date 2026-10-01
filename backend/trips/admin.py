@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from trips.models import FareQuote, Rating, Trip, TripEvent
+from trips.models import FareQuote, Rating, Trip, TripEvent, Vendor
 
 
 class TripEventInline(admin.TabularInline):
@@ -28,3 +28,13 @@ class TripAdmin(admin.ModelAdmin):
 class RatingAdmin(admin.ModelAdmin):
     list_display = ["trip", "rater", "rated", "score", "created_at"]
     list_filter = ["score"]
+
+
+@admin.register(Vendor)
+class VendorAdmin(admin.ModelAdmin):
+    """WR-25: mostly populated by usage (request_trip's get_or_create), not typed in here —
+    this is for cleaning up duplicate/misspelled names and, later, scoping by zone."""
+
+    list_display = ["name", "location_label", "phone", "zone", "created_at"]
+    list_filter = ["zone"]
+    search_fields = ["name", "location_label", "phone"]

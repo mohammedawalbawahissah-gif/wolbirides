@@ -6,8 +6,26 @@ import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "../tok
 
 // Expo env vars come through app.json's "extra" block (import.meta.env is Vite-only).
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
-export const API_BASE_URL = extra.apiBaseUrl || "http://localhost:8001/api";
-export const WS_BASE_URL = extra.wsBaseUrl || "ws://localhost:8001";
+
+// While developing, the backend runs on the same computer as the Expo dev server, so use the address this
+// app was loaded from. A fixed address (say a phone hotspot's 172.20.10.x) stops working the moment the
+// computer is given a different one, and then every request fails. Released builds use app.json's address.
+const devHost = __DEV__ ? Constants.expoConfig?.hostUri?.split(":")[0] : undefined;
+const useDevHost = !!devHost && /^\d{1,3}(\.\d{1,3}){3}$/.test(devHost) && !extra.apiBaseUrl?.startsWith("https://");
+export const API_BASE_URL = useDevHost ? `http://${devHost}:8001/api` : extra.apiBaseUrl || "http://localhost:8001/api";
+export const WS_BASE_URL = useDevHost ? `ws://${devHost}:8001` : extra.wsBaseUrl || "ws://localhost:8001";
+
+/** What to tell a person when a request fails. "No response at all" is a connection problem, never a wrong password. */
+export function requestErrorMessage(err: any, fallback: string): string {
+  if (!err?.response) {
+    const server = API_BASE_URL.replace(/^https?:\/\//, "").replace(/\/api$/, "");
+    return `Can't reach the WolbiRides server (${server}). Check that your phone and computer are on the same network and the backend is running.`;
+  }
+  const { status, data } = err.response;
+  if (status >= 500) return "The server had a problem. Try again in a moment.";
+  if (data && typeof data === "object") return data.detail || fallback;
+  return `The server sent an unexpected reply (${status}). Check that the app points at the WolbiRides backend.`;
+}
 
 export const api = axios.create({ baseURL: API_BASE_URL });
 
@@ -28,7 +46,7 @@ export function setUnauthorizedHandler(handler: () => void) {
 }
 
 // Silent refresh, same as the web apps: a 401 first tries the refresh token,
-// so riders stay signed in until they sign out. One refresh at a time.
+// so passengers stay signed in until they sign out. One refresh at a time.
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -104,6 +122,11 @@ export interface Driver {
   has_luggage_space?: boolean;
   accessibility_trained?: boolean;
   accepts_deliveries?: boolean;
+  licence_document?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  payout_phone?: string;
+  payout_provider?: "momo" | "hubtel";
 }
 
 export interface FareQuote {
@@ -149,11 +172,15 @@ export interface Trip {
   pool_info?: {
     pool_group: string;
     open: boolean;
-    rider_count: number;
+    passenger_count: number;
     stops?: { type: "pickup" | "dropoff"; trip_id: string; first_name: string; label: string; lat: string; lng: string; done: boolean }[];
   } | null;
   delivery?: {
+    delivery_subtype: "parcel" | "errand" | "vendor_order";
+    sender_name: string; sender_phone: string;
     recipient_name: string; recipient_phone: string; package_description: string; package_size: string;
+    task_description: string; spend_limit: string | null;
+    vendor: { id: string; name: string; location_label: string; phone: string } | null;
     picked_up_at: string | null;
   } | null;
   rated_by_me?: boolean;
@@ -181,9 +208,15 @@ export interface RideOffer {
   destination_label: string;
   fare_estimate: string;
   timeout_seconds: number;
+  expires_at?: string;
+  admin_offer?: boolean;
   kind?: "ride" | "delivery";
   trip_type?: "ride" | "delivery";
+  delivery_subtype?: "parcel" | "errand" | "vendor_order";
   package_description?: string;
   package_size?: string;
+  task_description?: string;
+  spend_limit?: string | null;
+  vendor_name?: string;
   pool_legs?: { type: "pickup" | "dropoff"; trip_id: string; first_name: string; label: string }[];
 }

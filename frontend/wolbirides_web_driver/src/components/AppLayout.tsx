@@ -2,17 +2,20 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import AssistantPanel from "./AssistantPanel";
+import { useDispatchState } from "./DispatchLayer";
 import NotificationBell from "./NotificationBell";
 import "./AppLayout.css";
 
 const NAV_ITEMS = [
-  { to: "/", label: "Drive", end: true },
+  { to: "/", label: "Home", end: true },
+  { to: "/requests", label: "Requests" },
   { to: "/trips", label: "Trips" },
   { to: "/earnings", label: "Earnings" },
 ];
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  const { offer } = useDispatchState();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   // Forward DriverGate's outlet context through to the tab pages.
@@ -28,8 +31,8 @@ export default function AppLayout() {
       <header className="topbar">
         <div className="topbar-inner">
           <NavLink to="/" className="topbar-brand">
-            <span className="brand-mark">WR</span>
-            <span className="brand-name">WolbiRides Driver</span>
+            <img src="/favicon.svg" alt="WolbiRides" className="brand-mark" />
+            <span className="brand-name">WolbiRides Rider</span>
           </NavLink>
 
           <nav className="topbar-nav">
@@ -41,6 +44,7 @@ export default function AppLayout() {
                 className={({ isActive }) => "topbar-link" + (isActive ? " topbar-link-active" : "")}
               >
                 {item.label}
+                {item.to === "/requests" && offer && <span className="topbar-badge" aria-label="A request is waiting" />}
               </NavLink>
             ))}
           </nav>

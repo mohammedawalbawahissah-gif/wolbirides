@@ -22,13 +22,13 @@ export default function DriverCard({ driver, eta }: { driver: TripDriverBrief; e
           <span className="driver-card-initials">{initials || "WR"}</span>
         )}
         {driver.verification_status === "verified" && (
-          <span className="driver-card-verified" title="Verified driver">✓</span>
+          <span className="driver-card-verified" title="Verified rider">✓</span>
         )}
       </div>
 
       <div className="driver-card-body">
         <div className="driver-card-name-row">
-          <span className="driver-card-name">{driver.name || "Your driver"}</span>
+          <span className="driver-card-name">{driver.name || "Your rider"}</span>
           <span className="driver-card-rating">★ {Number(driver.rating).toFixed(1)}</span>
         </div>
         <div className="driver-card-vehicle">
@@ -40,7 +40,7 @@ export default function DriverCard({ driver, eta }: { driver: TripDriverBrief; e
       </div>
 
       {driver.phone && (
-        <a className="driver-card-call" href={`tel:${driver.phone}`} aria-label="Call driver">
+        <a className="driver-card-call" href={`tel:${driver.phone}`} aria-label="Call rider">
           ☎
         </a>
       )}

@@ -16,7 +16,6 @@ export default function Trips() {
     <div>
       <div className="page-heading">
         <h1>Your trips</h1>
-        <p>Every ride you've accepted.</p>
       </div>
 
       {trips == null && <div className="empty-state">Loading…</div>}

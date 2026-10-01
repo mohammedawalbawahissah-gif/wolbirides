@@ -94,7 +94,7 @@ def generate_invoice(organization, period_start: date, period_end: date):
         total += t.fare_final
         items.append({
             "trip_id": str(t.id), "date": t.completed_at.date().isoformat(),
-            "rider": t.passenger.name or t.passenger.phone, "trip_type": t.trip_type,
+            "passenger": t.passenger.name or t.passenger.phone, "trip_type": t.trip_type,
             "paid_with": "voucher" if t.voucher_id else "account",
             "from": t.pickup_label, "to": t.destination_label, "fare": str(t.fare_final),
         })

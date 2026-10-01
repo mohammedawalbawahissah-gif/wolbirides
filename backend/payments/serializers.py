@@ -30,6 +30,11 @@ class MomoInitiateSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
 
 
+class HubtelInitiateSerializer(serializers.Serializer):
+    trip_id = serializers.UUIDField()
+    phone = serializers.CharField(max_length=20)
+
+
 class MomoWebhookSerializer(serializers.Serializer):
     """
     Shape is intentionally provider-agnostic here — pin exact field names once

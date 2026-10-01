@@ -26,4 +26,4 @@ class NotificationPreferenceTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.data[0]["enabled"])
         self.assertIsNone(notify(self.user, "Reminder", category=Notification.Category.RECURRING_REMINDER))
-        self.assertIsNotNone(notify(self.user, "Driver assigned", category=Notification.Category.TRIP))
+        self.assertIsNotNone(notify(self.user, "Rider assigned", category=Notification.Category.TRIP))

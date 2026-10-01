@@ -49,7 +49,6 @@ export default function SignUp() {
       {step === "details" ? (
         <>
           <h2>Create your account</h2>
-          <p className="auth-subtitle">We'll email you a code to verify it's really you.</p>
           <form onSubmit={handleRequestCode}>
             <label htmlFor="name">Full name</label>
             <input

@@ -11,6 +11,16 @@ export { WS_BASE_URL };
 
 export const api = axios.create({ baseURL: BASE_URL });
 
+/** What to tell a person when a request fails. "No response at all" is a connection problem, never a wrong password. */
+export function requestErrorMessage(err: any, fallback: string): string {
+  if (!err?.response) return "Can't reach the WolbiRides server. Check your connection and that the backend is running.";
+  const { status, data } = err.response;
+  if (status >= 500) return "The server had a problem. Try again in a moment.";
+  if (data && typeof data === "object") return data.detail || fallback;
+  return `The server sent an unexpected reply (${status}). Check that the app points at the WolbiRides backend.`;
+}
+
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("wolbirides_access");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -179,6 +189,7 @@ export interface Trip {
   status:
     | "requested"
     | "matching"
+    | "awaiting_assignment"
     | "matched"
     | "driver_arriving"
     | "in_progress"
@@ -200,7 +211,7 @@ export interface Trip {
   started_at: string | null;
   completed_at: string | null;
   kind?: "ride" | "delivery";
-  payment_method?: "cash" | "momo" | "organization" | "voucher" | "bundle";
+  payment_method?: "cash" | "momo" | "hubtel" | "organization" | "voucher" | "bundle";
   organization_name?: string | null;
   recipient_name?: string;
   recipient_phone?: string;
@@ -210,12 +221,26 @@ export interface Trip {
   shareable?: boolean;
   rated_by_me?: boolean;
   pool_seat_fare?: string | null;
-  pool_info?: { pool_group: string; open: boolean; rider_count: number } | null;
-  preference_status?: "" | "awaiting_rider" | "keep_waiting" | "relaxed";
+  pool_info?: { pool_group: string; open: boolean; passenger_count: number } | null;
+  preference_status?: "" | "awaiting_passenger" | "keep_waiting" | "relaxed";
+  queue_reason?: "review" | "no_courier_accepted" | "driver_withdrew" | "reassigned" | null;
+  no_drivers_reason?: "none_online" | "all_busy" | "no_delivery_couriers" | "already_offered" | null;
   delivery?: {
+    delivery_subtype: "parcel" | "errand" | "vendor_order";
+    sender_name: string; sender_phone: string;
     recipient_name: string; recipient_phone: string; package_description: string; package_size: string;
+    task_description: string; spend_limit: string | null;
+    vendor: { id: string; name: string; location_label: string; phone: string } | null;
+    external_courier: { id: string; name: string; phone: string } | null;
     picked_up_at: string | null; pickup_code: string | null; dropoff_code: string | null;
   } | null;
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
+  location_label: string;
+  phone: string;
 }
 
 export interface ServiceZone {
@@ -225,7 +250,8 @@ export interface ServiceZone {
   base_fare: string;
   per_km_rate: string;
   active: boolean;
-  delivery_surcharge?: string;
-  pool_max_riders?: number;
+  delivery_surcharge?: string; // legacy: the small-parcel tier only — kept for older backends
+  delivery_surcharges?: { parcel_small: string; parcel_medium: string; parcel_large: string; task: string };
+  pool_max_passengers?: number;
   pickup_points?: { id: string; name: string; latitude: string; longitude: string; sponsor_name?: string }[];
 }

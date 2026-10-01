@@ -131,7 +131,7 @@ class AdminDriverVerifyView(APIView):
         notify_copy = {
             "verify": ("You're verified!", "Ops approved your documents — you can go online now."),
             "reject": ("Application not approved", "Ops couldn't verify your documents. Contact support for next steps."),
-            "suspend": ("Account suspended", "Your driver account has been suspended pending review."),
+            "suspend": ("Account suspended", "Your rider account has been suspended pending review."),
         }
         title, body = notify_copy[action]
         notify(driver.user, title, body, category="driver", link="/profile")

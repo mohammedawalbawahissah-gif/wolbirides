@@ -11,3 +11,4 @@
 }
 @keyframes pay-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .pay-spinner { animation: none; } }
+.pay-options { display: flex; flex-direction: column; gap: 8px; }

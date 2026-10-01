@@ -5,7 +5,7 @@ import { useSortableData } from "../hooks/useSortableData";
 
 const STATUS_OPTIONS = [
   "", "requested", "matching", "matched", "driver_arriving",
-  "in_progress", "completed", "cancelled", "no_drivers_found",
+  "awaiting_assignment", "in_progress", "completed", "cancelled", "no_drivers_found",
 ];
 
 function formatTime(iso: string | null) {
@@ -73,7 +73,7 @@ export default function Trips() {
 
   return (
     <div>
-      <PageHeader title="Trips" subtitle="Search and reconciliation across every requested ride." />
+      <PageHeader title="Trips" />
 
       <form className="filter-row" onSubmit={handleSearchSubmit}>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>

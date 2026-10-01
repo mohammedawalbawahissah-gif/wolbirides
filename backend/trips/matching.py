@@ -19,7 +19,11 @@ import redis.asyncio as aioredis
 from django.conf import settings
 from django.utils import timezone
 
-DRIVER_LOCATION_TTL_SECONDS = 20
+# A driver's app pings every 5s while working and every 15s while idle, and browsers slow timers
+# in background tabs to about one a minute. A 20s expiry made healthy, online drivers vanish from
+# dispatch between pings ("no drivers found" with a driver sitting right there). Disconnecting or
+# going offline removes them immediately, so the expiry is only a safety net for a lost connection.
+DRIVER_LOCATION_TTL_SECONDS = 90
 _redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
 # Synchronous client for read-only lookups from ordinary (non-async) DRF

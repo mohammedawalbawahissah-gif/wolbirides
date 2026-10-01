@@ -91,7 +91,6 @@ export default function Profile() {
         <FileDrop
           kind="profile_photo"
           label="Profile photo"
-          hint="A clear photo helps drivers recognize you."
           value={user?.profile_photo || null}
           onChange={handlePhotoChange}
         />

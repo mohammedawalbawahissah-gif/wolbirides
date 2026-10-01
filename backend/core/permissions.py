@@ -13,6 +13,19 @@ class IsAdminRole(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.role == "admin")
 
 
+class IsPassengerRole(BasePermission):
+    """
+    Only passenger accounts book trips and deliveries. Someone who applies to drive becomes role='driver'
+    and is routed to the driver app, so a driver (or ops) account can't book, which would otherwise let a
+    driver book an errand and have it assigned to themselves.
+    """
+
+    message = "Bookings are made from a passenger account. Sign in to the passenger app to book."
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.role == "passenger")
+
+
 class IsStaffRole(BasePermission):
     """
     Admins and support staff. For day-to-day operations support needs to act on:

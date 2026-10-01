@@ -14,8 +14,7 @@ export type AuthStackScreenProps<T extends keyof AuthStackParamList> = NativeSta
 >;
 
 export type MainTabParamList = {
-  // WR-13: "Ride again" from History pre-fills the route.
-  Ride: { rebook?: { pickup: { lat: number; lng: number; label: string }; destination: { lat: number; lng: number; label: string } } } | undefined;
+  Ride: undefined;
   History: undefined;
   Profile: undefined;
 };
@@ -25,6 +24,10 @@ export type RootStackParamList = {
   Notifications: undefined;
   Assistant: { tripId?: string; label?: string; message?: string } | undefined;
   TripStatus: { tripId: string };
+  // WR-13: "Ride again" from History pre-fills the route.
+  BookRide: { initialKind?: "ride" | "delivery"; rebook?: { pickup: { lat: number; lng: number; label: string }; destination: { lat: number; lng: number; label: string } } } | undefined;
+  RateDriver: undefined;
+  Support: undefined;
 };
 
 export type MainTabScreenProps<T extends keyof MainTabParamList> = CompositeScreenProps<

@@ -38,15 +38,15 @@ class RotationTests(TestCase):
 
 class HistoryPagingTests(TestCase):
     def test_older_trips_reachable_page_by_page(self):
-        rider = User.objects.create_user(phone="+233200000001", role="passenger")
+        passenger = User.objects.create_user(phone="+233200000001", role="passenger")
         zone = ServiceZone.objects.create(name="Z", boundary={}, base_fare=Decimal("5"), per_km_rate=Decimal("2"))
         now = timezone.now()
-        trips = [Trip(passenger=rider, zone=zone, status="completed", pickup_lat=9.4, pickup_lng=-0.9,
+        trips = [Trip(passenger=passenger, zone=zone, status="completed", pickup_lat=9.4, pickup_lng=-0.9,
                       destination_lat=9.42, destination_lng=-0.88) for _ in range(120)]
         Trip.objects.bulk_create(trips)
         for i, t in enumerate(Trip.objects.all()):
             Trip.objects.filter(id=t.id).update(requested_at=now - timedelta(minutes=i))
-        c = APIClient(); c.force_authenticate(rider)
+        c = APIClient(); c.force_authenticate(passenger)
         seen, before = [], None
         while True:
             page = c.get("/api/passengers/me/rides" + (f"?before={before}" if before else "")).data

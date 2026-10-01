@@ -1,8 +1,9 @@
-import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { useState } from "react";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useDriverContext } from "../components/DriverGate";
-import { Badge, Button, Card } from "../components/ui";
+import { Badge, Button, Card, ErrorBanner, FieldLabel, TextField } from "../components/ui";
 import { EmergencyContactCard } from "../components/Safety";
 import PhotoField from "../components/PhotoField";
 import SupportCard from "../components/SupportCard";
@@ -46,44 +47,48 @@ export default function ProfileScreen() {
 
       <Card style={styles.card}>
         <Text style={typography.h2}>What you offer</Text>
-        <Text style={[typography.muted, { marginBottom: spacing.sm }]}>
-          Passengers who ask for these get matched with you first when you're about as close as other drivers.
-        </Text>
-        {([
-          ["offers_quiet_ride", "Quiet rides"],
-          ["has_luggage_space", "Luggage space"],
-          ["accessibility_trained", "Accessibility help"],
-          ["accepts_deliveries", "Deliveries (WolbiDeliver)"],
-        ] as const).map(([field, label]) => (
-          <View key={field} style={styles.row}>
-            <Text style={styles.value}>{label}</Text>
-            <Switch value={!!driver[field]} onValueChange={(v) => toggle(field, v)} trackColor={{ true: colors.success }} />
-          </View>
-        ))}
-      </Card>
-
-      <Card style={styles.card}>
-        <Text style={typography.h2}>Gender (optional)</Text>
-        <Text style={[typography.muted, { marginBottom: spacing.sm }]}>
-          Only used to match riders who ask for it. It isn't shown to riders or on your profile.
-        </Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {([["", "Prefer not to say"], ["female", "Female"], ["male", "Male"]] as const).map(([value, label]) => (
-            <Button key={value} title={label} variant={(driver.gender ?? "") === value ? "primary" : "ghost"}
-              onPress={() => toggle("gender", value)} />
-          ))}
+        <Text style={styles.chipLabel}>Rider gender (optional)</Text>
+        <View style={styles.chips}>
+          {([["", "Prefer not to say"], ["female", "Female rider"], ["male", "Male rider"]] as const).map(([value, label]) => {
+            const on = (driver.gender ?? "") === value;
+            return (
+              <TouchableOpacity key={value} style={[styles.chip, on && styles.chipOn]} onPress={() => toggle("gender", value)}
+                accessibilityRole="button" accessibilityState={{ selected: on }}>
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {/* Same wording and order as the passenger's "Driver preference", so a passenger asks for exactly what a
+            driver can say they offer. "Deliveries" is driver-only, so it's last. */}
+        <View style={styles.chips}>
+          {([
+            ["offers_quiet_ride", "Quiet ride"],
+            ["has_luggage_space", "Space for luggage"],
+            ["accessibility_trained", "Help getting in and out"],
+            ["accepts_deliveries", "Deliveries (WolbiDeliver)"],
+          ] as const).map(([field, label]) => {
+            const on = !!driver[field];
+            return (
+              <TouchableOpacity key={field} style={[styles.chip, on && styles.chipOn]} onPress={() => toggle(field, !on)}
+                accessibilityRole="button" accessibilityState={{ selected: on }}>
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </Card>
 
       <Card style={styles.card}>
         <Text style={typography.h2}>How rides are offered</Text>
         <Text style={[typography.body, { lineHeight: 21 }]}>
-          Most rides go to the nearest free driver, because riders shouldn't wait longer than they need to. Now and then,
-          among drivers who are about equally close, we offer a ride first to the driver who's had fewer rides this week,
+          Most rides go to the nearest free rider, because passengers shouldn't wait longer than they need to. Now and then,
+          among riders who are about equally close, we offer a ride first to the rider who's had fewer rides this week,
           so the work stays reasonably shared. We never send you a ride that's much further away just for this.
         </Text>
       </Card>
 
+      <PayoutCard />
       <EmergencyContactCard />
       <SupportCard />
 
@@ -92,7 +97,59 @@ export default function ProfileScreen() {
   );
 }
 
+/** Where payouts go — a rider's mobile money wallet is sometimes on a different number from
+ * the one they signed up with, so this is never assumed from the account phone. */
+function PayoutCard() {
+  const { user } = useAuth();
+  const { driver, setDriver } = useDriverContext();
+  const [provider, setProvider] = useState<"momo" | "hubtel">(driver.payout_provider ?? "momo");
+  const [phone, setPhone] = useState(driver.payout_phone ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const { data } = await api.patch("/drivers/me", { payout_provider: provider, payout_phone: phone.trim() });
+      setDriver(data);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setError("Couldn't save that. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card style={styles.card}>
+      <Text style={typography.h2}>Get paid</Text>
+      <FieldLabel>Provider</FieldLabel>
+      <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm }}>
+        {(["momo", "hubtel"] as const).map((p) => (
+          <TouchableOpacity key={p} style={[styles.chip, provider === p && styles.chipOn]} onPress={() => setProvider(p)}>
+            <Text style={[styles.chipText, provider === p && styles.chipTextOn]}>{p === "momo" ? "MTN MoMo" : "Hubtel"}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <FieldLabel>Number</FieldLabel>
+      <TextField value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder={user?.phone || "Your account phone"} />
+      <Text style={[typography.muted, { marginTop: -4, marginBottom: spacing.sm }]}>Leave blank to use your account phone.</Text>
+      {error && <ErrorBanner message={error} />}
+      <Button title={saved ? "Saved ✓" : "Save payout details"} onPress={save} variant="gold" loading={saving} />
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
+  chipLabel: { fontSize: 13, fontWeight: "600", color: colors.inkMuted, marginTop: spacing.sm, marginBottom: spacing.xs },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: spacing.sm },
+  chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 },
+  chipOn: { backgroundColor: colors.navyInk, borderColor: colors.navyInk },
+  chipText: { fontSize: 13.5, color: colors.inkMuted },
+  chipTextOn: { color: "#FFFFFF" },
   screen: { flex: 1, backgroundColor: colors.paper },
   content: { padding: spacing.lg },
   subtitle: { marginBottom: spacing.lg },

@@ -12,8 +12,8 @@ const empty = { zone: "", title: "", description: "", image_url: "", link_url: "
 
 /**
  * WR-24: sponsored placements, sold directly to local businesses and set up here.
- * Every rider in a zone sees the same ones, always labelled "Sponsored". There is
- * no targeting, by design: if a placement ever needed rider data, don't build it.
+ * Every passenger in a zone sees the same ones, always labelled "Sponsored". There is
+ * no targeting, by design: if a placement ever needed passenger data, don't build it.
  */
 export default function Placements() {
   const [items, setItems] = useState<Placement[] | null>(null);
@@ -55,8 +55,7 @@ export default function Placements() {
 
   return (
     <div>
-      <PageHeader title="Sponsored placements"
-        subtitle="Shown the same to every rider in a zone, always labelled Sponsored. No personal targeting, ever." />
+      <PageHeader title="Sponsored placements" />
       <form className="panel" onSubmit={create} style={{ padding: 20, marginBottom: 20 }}>
         <div className="zone-form-grid">
           <label>Sponsor name<input required value={form.sponsor_name} onChange={(e) => setForm({ ...form, sponsor_name: e.target.value })} /></label>

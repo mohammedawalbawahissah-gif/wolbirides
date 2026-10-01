@@ -6,7 +6,10 @@ import DriverCard from "../components/DriverCard";
 import RideStepper from "../components/RideStepper";
 import SearchingRadar from "../components/SearchingRadar";
 import SOSButton from "../components/SOSButton";
+import { useAuth } from "../auth/AuthContext";
 import PaymentStep from "../components/PaymentStep";
+import { realPhone, samePhone } from "../phone";
+import RatingCard from "../components/RatingCard";
 import SupportCard from "../components/SupportCard";
 import { CheckInPrompt, PostTripCheckin, PreferenceDecision, ShareTripButton } from "../components/TripSafety";
 import TripMap from "../components/TripMap";
@@ -14,25 +17,49 @@ import { TripStatusSkeleton } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import "./TripStatus.css";
 
-const STATUS_COPY: Record<Trip["status"], { label: string; detail: string }> = {
-  requested: { label: "Requesting", detail: "Setting up your fare and confirming the zone." },
-  matching: { label: "Finding a driver", detail: "Offering your ride to the nearest available driver." },
-  matched: { label: "Driver assigned", detail: "Your driver has accepted and is heading your way." },
-  driver_arriving: { label: "Driver arriving", detail: "Your driver is close by." },
-  in_progress: { label: "On the way", detail: "Trip in progress — sit back, you're on your way." },
-  completed: { label: "Trip complete", detail: "Thanks for riding with WolbiRides." },
-  cancelled: { label: "Trip cancelled", detail: "This trip was cancelled." },
-  no_drivers_found: { label: "No drivers available", detail: "No founding drivers were online in this zone just now." },
+/** A delivery a person on our team is arranging: what the passenger should expect. */
+function arrangingText(reason: Trip["queue_reason"]) {
+  switch (reason) {
+    case "driver_withdrew":
+    case "reassigned":
+      return "Your courier can't make it, so we're finding you another. We'll tell you as soon as they're assigned.";
+    case "no_courier_accepted":
+      return "No rider nearby was free, so our team is finding you a courier. We'll tell you as soon as one is assigned.";
+    default:
+      return "Our team checks errands and vendor orders, then hands them to a courier. We'll tell you as soon as one is assigned.";
+  }
+}
+
+/** Plain-words version of why a search found nobody (recorded by the server at the time). */
+function noDriversText(reason: Trip["no_drivers_reason"]) {
+  switch (reason) {
+    case "none_online": return "No riders are online near you right now.";
+    case "all_busy": return "Every nearby rider is on another trip right now.";
+    case "no_delivery_couriers": return "No riders are taking deliveries right now.";
+    default: return "Nearby riders didn't respond in time.";
+  }
+}
+
+const STATUS_COPY: Record<Trip["status"], { label: string }> = {
+  requested: { label: "Requesting" },
+  matching: { label: "Finding a rider" },
+  awaiting_assignment: { label: "Being arranged" },
+  matched: { label: "Rider assigned" },
+  driver_arriving: { label: "Rider arriving" },
+  in_progress: { label: "On the way" },
+  completed: { label: "Trip complete" },
+  cancelled: { label: "Trip cancelled" },
+  no_drivers_found: { label: "No riders available" },
 };
 
 export default function TripStatus() {
   const { tripId } = useParams<{ tripId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const toast = useToast();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const [rating, setRating] = useState<number | null>(null);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [lastStatus, setLastStatus] = useState<Trip["status"] | null>(null);
 
@@ -58,12 +85,12 @@ export default function TripStatus() {
   useEffect(() => {
     if (!trip || trip.status === lastStatus) return;
     if (lastStatus !== null) {
-      if (trip.status === "matched") toast.show("A driver has accepted your ride!", "success");
-      if (trip.status === "driver_arriving") toast.show("Your driver is nearby.", "info");
+      if (trip.status === "matched") toast.show("A rider has accepted your ride!", "success");
+      if (trip.status === "driver_arriving") toast.show("Your rider is nearby.", "info");
       if (trip.status === "in_progress") toast.show("Trip started — enjoy the ride.", "success");
       if (trip.status === "completed") toast.show("Trip complete. Thanks for riding with us!", "success");
       if (trip.status === "cancelled") toast.show("This trip was cancelled.", "error");
-      if (trip.status === "no_drivers_found") toast.show("No drivers were available nearby.", "error");
+      if (trip.status === "no_drivers_found") toast.show("No riders were available nearby.", "error");
     }
     // eslint-disable-next-line react-hooks-js/set-state-in-effect -- resets loading/error state as the effect starts a fetch or subscription
     setLastStatus(trip.status);
@@ -83,16 +110,6 @@ export default function TripStatus() {
     }
   }
 
-  async function submitRating() {
-    if (!tripId || rating == null) return;
-    try {
-      await api.post(`/trips/${tripId}/rating`, { score: rating, issue_tags: [], comment: "" });
-      setRatingSubmitted(true);
-      toast.show("Thanks for the feedback!", "success");
-    } catch {
-      toast.show("Couldn't submit your rating.", "error");
-    }
-  }
 
   const showRadar = trip && (trip.status === "requested" || trip.status === "matching");
   const showMap = trip && !["completed", "cancelled", "no_drivers_found"].includes(trip.status);
@@ -129,7 +146,6 @@ export default function TripStatus() {
 
               <div className={`trip-status-banner trip-status-banner-${trip.status}`}>
                 <div className="trip-status-label">{STATUS_COPY[trip.status].label}</div>
-                <div className="trip-status-detail">{STATUS_COPY[trip.status].detail}</div>
               </div>
 
               {trip.status === "in_progress" && <CheckInPrompt tripId={trip.id} refreshKey={lastMessage} />}
@@ -138,6 +154,9 @@ export default function TripStatus() {
               )}
 
               {showRadar && <SearchingRadar />}
+              {trip.status === "awaiting_assignment" && (
+                <div className="empty-state"><p>{arrangingText(trip.queue_reason)}</p></div>
+              )}
 
               {trip.driver_detail && (trip.status === "matched" || trip.status === "driver_arriving" || trip.status === "in_progress") && (
                 <DriverCard
@@ -162,38 +181,22 @@ export default function TripStatus() {
 
               {trip.status === "no_drivers_found" && (
                 <div className="empty-state">
-                  <p>{STATUS_COPY.no_drivers_found.detail}</p>
+                  <p>{noDriversText(trip.no_drivers_reason)}</p>
                   <button className="btn btn-primary" onClick={() => navigate("/")}>
                     Try again
                   </button>
                 </div>
               )}
 
-              {trip.status === "completed" && ["cash", "momo", undefined].includes(trip.payment_method) && (
-                <PaymentStep tripId={trip.id} fare={trip.fare_final || trip.fare_quote?.total || ""} />
+              {trip.status === "completed" && !["organization", "voucher", "bundle"].includes(trip.payment_method ?? "") && (
+                <PaymentStep tripId={trip.id} fare={trip.fare_final || trip.fare_quote?.total || ""}
+                  preferredMethod={trip.payment_method === "momo" || trip.payment_method === "hubtel" ? trip.payment_method : undefined} />
               )}
 
               {trip.status === "completed" && <PostTripCheckin tripId={trip.id} />}
 
               {trip.status === "completed" && !ratingSubmitted && !trip.rated_by_me && (
-                <div className="card rating-card">
-                  <div className="rating-title">How was your ride?</div>
-                  <div className="rating-stars">
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button
-                        key={n}
-                        className={"star" + (rating != null && n <= rating ? " star-filled" : "")}
-                        onClick={() => setRating(n)}
-                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                  <button className="btn btn-gold" disabled={rating == null} onClick={submitRating}>
-                    Submit rating
-                  </button>
-                </div>
+                <RatingCard tripId={trip.id} driverName={trip.driver_detail?.name} onDone={() => setRatingSubmitted(true)} />
               )}
 
               {((trip.status === "completed" && ratingSubmitted) || trip.status === "cancelled") && (
@@ -211,25 +214,55 @@ export default function TripStatus() {
                 {trip.shareable && (
                   <div className="delivery-box">
                     <strong>Shared ride</strong>
-                    {trip.pool_info && trip.pool_info.rider_count > 1
-                      ? <span>You're sharing with one other rider going your way, and splitting the base fare.</span>
-                      : <span>If someone nearby is going your way, you'll share and pay less. Otherwise you pay the normal fare.</span>}
+                    {trip.pool_info && trip.pool_info.passenger_count > 1 && (
+                      <span>You're sharing with one other passenger going your way.</span>
+                    )}
                   </div>
                 )}
                 {trip.delivery && (
                   <div className="delivery-box">
-                    <div><strong>Package:</strong> {trip.delivery.package_description} ({trip.delivery.package_size})</div>
-                    <div><strong>To:</strong> {trip.delivery.recipient_name} ({trip.delivery.recipient_phone})</div>
+                    {trip.delivery.external_courier && (
+                      <div><strong>Courier:</strong> {trip.delivery.external_courier.name}{" "}
+                        <a href={`tel:${trip.delivery.external_courier.phone}`}>{trip.delivery.external_courier.phone}</a></div>
+                    )}
+                    {trip.delivery.sender_name && (
+                      <div><strong>From:</strong> {trip.delivery.sender_name}{trip.delivery.sender_phone ? ` (${trip.delivery.sender_phone})` : ""}</div>
+                    )}
+                    {trip.delivery.recipient_name && (
+                      <div><strong>To:</strong> {trip.delivery.recipient_name}{trip.delivery.recipient_phone ? ` (${trip.delivery.recipient_phone})` : ""}</div>
+                    )}
+                    {trip.delivery.delivery_subtype === "parcel" && (
+                      <div><strong>Package:</strong> {trip.delivery.package_description} ({trip.delivery.package_size})</div>
+                    )}
+                    {trip.delivery.delivery_subtype === "errand" && (
+                      <>
+                        <div><strong>Task:</strong> {trip.delivery.task_description}</div>
+                        {trip.delivery.spend_limit && <div><strong>Spending limit:</strong> GH₵{trip.delivery.spend_limit}</div>}
+                      </>
+                    )}
+                    {trip.delivery.delivery_subtype === "vendor_order" && (
+                      <>
+                        {trip.delivery.vendor && (
+                          <div><strong>Vendor:</strong> {trip.delivery.vendor.name}{trip.delivery.vendor.location_label ? ` — ${trip.delivery.vendor.location_label}` : ""}</div>
+                        )}
+                        <div><strong>Order:</strong> {trip.delivery.task_description}</div>
+                        {trip.delivery.spend_limit && <div><strong>Spending limit:</strong> GH₵{trip.delivery.spend_limit}</div>}
+                      </>
+                    )}
                     {trip.delivery.pickup_code && !trip.delivery.picked_up_at && (
                       <div className="delivery-code">
                         Pickup code <strong>{trip.delivery.pickup_code}</strong>
-                        <span>Show this to the driver when they collect the package.</span>
+                        <span>{trip.delivery.sender_phone && !samePhone(trip.delivery.sender_phone, realPhone(user))
+                          ? `We've texted it to ${trip.delivery.sender_name}. The rider needs it to collect the item.`
+                          : "Show the rider this code when they collect the item."}</span>
                       </div>
                     )}
                     {trip.delivery.dropoff_code && trip.status !== "completed" && (
                       <div className="delivery-code">
                         Drop-off code <strong>{trip.delivery.dropoff_code}</strong>
-                        <span>We've texted it to {trip.delivery.recipient_name}. The driver needs it to finish.</span>
+                        <span>{trip.delivery.recipient_phone && !samePhone(trip.delivery.recipient_phone, realPhone(user))
+                          ? `We've texted it to ${trip.delivery.recipient_name}. The rider needs it to finish.`
+                          : "Give the rider this code when you receive it."}</span>
                       </div>
                     )}
                   </div>
@@ -246,7 +279,7 @@ export default function TripStatus() {
                     {trip.payment_method === "organization" ? trip.organization_name
                       : trip.payment_method === "voucher" ? `Voucher from ${trip.organization_name}`
                       : trip.payment_method === "bundle" ? "Ride bundle"
-                      : trip.payment_method === "momo" ? "Mobile Money" : "Cash to driver"}
+                      : trip.payment_method === "momo" ? "Mobile Money" : "Cash to rider"}
                   </span>
                 </div>
                 <div className="trip-fare-row">
@@ -273,9 +306,9 @@ export default function TripStatus() {
                   </details>
                 )}
 
-                {["requested", "matching", "matched", "driver_arriving"].includes(trip.status) && (
+                {["requested", "matching", "awaiting_assignment", "matched", "driver_arriving"].includes(trip.status) && (
                   <button className="btn btn-danger-ghost btn-block" disabled={cancelling} onClick={cancelTrip} style={{ marginTop: 16 }}>
-                    {cancelling ? "Cancelling…" : "Cancel ride"}
+                    {cancelling ? "Cancelling…" : trip.trip_type === "delivery" ? "Cancel delivery" : "Cancel ride"}
                   </button>
                 )}
 

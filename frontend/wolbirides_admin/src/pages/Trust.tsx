@@ -24,8 +24,7 @@ export default function Trust() {
 
   return (
     <div>
-      <PageHeader title="Trust indicators"
-        subtitle="Early warnings that growth features have started trading against riders' and drivers' trust. Treat a rise as a signal to fix, not to route around." />
+      <PageHeader title="Trust indicators" />
       {error && <EmptyState message={error} />}
       {!data && !error && <LoadingState />}
       {data && (
@@ -34,7 +33,7 @@ export default function Trust() {
             <KpiCard label={`Notification opt-out rate (${data.notification_opt_out.users_opted_out} of ${data.notification_opt_out.passengers})`}
               value={`${Math.round(data.notification_opt_out.rate * 100)}%`}
               tone={data.notification_opt_out.rate > 0.25 ? "warning" : "neutral"} />
-            <KpiCard label="Driver trip concentration, 7 days (Gini)" value={data.driver_trip_distribution_7d.gini.toFixed(2)}
+            <KpiCard label="Rider trip concentration, 7 days (Gini)" value={data.driver_trip_distribution_7d.gini.toFixed(2)}
               tone={data.driver_trip_distribution_7d.gini > 0.4 ? "warning" : "neutral"} />
             <KpiCard label={`Tickets saying "pressured" / "didn't realize" (30 days, of ${data.pressure_language_tickets.of_all_tickets})`}
               value={String(data.pressure_language_tickets.count)}

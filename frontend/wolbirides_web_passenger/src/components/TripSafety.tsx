@@ -96,7 +96,6 @@ export function CheckInPrompt({ tripId, refreshKey }: { tripId: string; refreshK
   return (
     <div className="check-in" role="alertdialog" aria-labelledby="check-in-title">
       <div id="check-in-title" className="check-in-title">Are you OK?</div>
-      <p>Your trip is taking longer than expected. If we don't hear back in a few minutes, our team will call you.</p>
       <div className="check-in-actions">
         <button className="btn btn-success" disabled={busy} onClick={() => answer("ok")}>I'm OK</button>
         <button className="btn btn-danger" disabled={busy} onClick={() => answer("help")}>I need help</button>
@@ -143,17 +142,17 @@ export function PostTripCheckin({ tripId }: { tripId: string }) {
           <textarea id="checkin-details" className="field-input" rows={3} value={details}
             onChange={(e) => setDetails(e.target.value)} maxLength={500} />
           <button className="btn btn-primary" disabled={busy} onClick={() => send("something_off")}>Send to safety team</button>
-          <p className="opt-note">This goes to the WolbiRides safety team, not to the driver. If you're in danger now, call 112.</p>
+          <p className="opt-note">If you're in danger now, call 112.</p>
         </>
       )}
     </div>
   );
 }
 
-/** WR-19: no driver matching the rider's preference is free. The rider decides; nobody is silently reassigned. */
+/** WR-19: no driver matching the passenger's preference is free. The passenger decides; nobody is silently reassigned. */
 export function PreferenceDecision({ tripId, status, onDecided }: { tripId: string; status?: string; onDecided: () => void }) {
   const [busy, setBusy] = useState(false);
-  if (status !== "awaiting_rider" && status !== "keep_waiting") return null;
+  if (status !== "awaiting_passenger" && status !== "keep_waiting") return null;
 
   async function decide(decision: "any_driver" | "keep_waiting") {
     setBusy(true);
@@ -168,15 +167,10 @@ export function PreferenceDecision({ tripId, status, onDecided }: { tripId: stri
   return (
     <div className="check-in" role="alertdialog" aria-labelledby="pref-title">
       <div id="pref-title" className="check-in-title">
-        {status === "keep_waiting" ? "Still looking for a matching driver" : "No matching driver is free right now"}
+        {status === "keep_waiting" ? "Still looking for a matching rider" : "No matching rider is free right now"}
       </div>
-      <p>
-        {status === "keep_waiting"
-          ? "We'll keep checking for a few minutes. You can switch to the next available driver at any time."
-          : "Take the next available driver now, or keep waiting for one who matches your preference."}
-      </p>
       <div className="check-in-actions">
-        <button className="btn btn-gold" disabled={busy} onClick={() => decide("any_driver")}>Next available driver</button>
+        <button className="btn btn-gold" disabled={busy} onClick={() => decide("any_driver")}>Next available rider</button>
         {status !== "keep_waiting" && (
           <button className="btn btn-ghost" disabled={busy} onClick={() => decide("keep_waiting")}>Keep waiting</button>
         )}

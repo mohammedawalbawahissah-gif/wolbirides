@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { requestErrorMessage } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import AuthLayout from "../components/AuthLayout";
 import PasswordField from "../components/PasswordField";
@@ -21,7 +22,7 @@ export default function SignIn() {
       await login(email, password);
       navigate("/");
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "Incorrect email or password.");
+      setError(requestErrorMessage(err, "Incorrect email or password."));
     } finally {
       setBusy(false);
     }
@@ -30,7 +31,6 @@ export default function SignIn() {
   return (
     <AuthLayout tagline="Welcome back.">
       <h2>Sign in</h2>
-      <p className="auth-subtitle">You'll stay signed in on this device until you sign out.</p>
       <form onSubmit={handleSubmit}>
         <label htmlFor="email">Email address</label>
         <input
@@ -53,7 +53,7 @@ export default function SignIn() {
         </button>
       </form>
       <div className="auth-switch">
-        New to WolbiRides? <Link to="/signup">Apply to drive</Link>
+        New to WolbiRides? <Link to="/signup">Apply to become a rider</Link>
       </div>
     </AuthLayout>
   );

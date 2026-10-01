@@ -8,10 +8,6 @@ export default function PendingScreen({ licenceNumber }: { licenceNumber: string
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <View style={styles.content}>
         <Text style={typography.h1}>Application received</Text>
-        <Text style={[typography.muted, styles.subtitle]}>
-          Your documents are being reviewed against the WR-07.2 compliance checklist (licence,
-          vehicle registration, and required documentation).
-        </Text>
 
         <Card>
           <Text style={styles.label}>Licence number</Text>

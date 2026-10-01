@@ -1,68 +1,13 @@
-.page-heading { margin-bottom: 24px; }
-.page-heading h1 { font-size: 26px; font-weight: 700; margin: 0 0 4px 0; }
-.page-heading p { font-size: 14px; color: var(--ink-muted); margin: 0; }
-
-.ride-layout {
-  display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 24px;
-  align-items: start;
+.menu-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;
 }
-
-.ride-panel-col { position: sticky; top: 88px; }
-
-.ride-summary-card h2 {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0 0 16px 0;
+.menu-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+  padding: 22px 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper-raised, #fff);
+  cursor: pointer; font: inherit; transition: border-color 0.15s, transform 0.1s;
 }
-
-.ride-point-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13.5px;
-  color: var(--ink);
-  margin-bottom: 12px;
-  font-family: monospace;
-}
-
-.trip-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-.trip-dot-pickup { background: var(--gold); }
-.trip-dot-dest { background: var(--navy-ink); }
-
-.fare-block {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 0;
-  border-top: 1px solid var(--line);
-  margin: 12px 0 18px 0;
-}
-
-.fare-label { font-size: 12.5px; color: var(--ink-muted); font-weight: 500; }
-.fare-value { font-size: 24px; font-weight: 700; color: var(--navy-ink); }
-.fare-distance { font-size: 13.5px; color: var(--ink-muted); font-weight: 600; }
-
-@media (max-width: 860px) {
-  .ride-layout { grid-template-columns: 1fr; }
-  .ride-panel-col { position: static; }
-}
-
-.suggested-ride {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border-left: 4px solid var(--gold);
-  border-radius: var(--radius-md);
-  background: var(--paper-raised);
-  box-shadow: var(--shadow-sm);
-}
-.suggested-ride-title { font-weight: 600; font-size: 15px; }
-.suggested-ride-meta { font-size: 13px; color: var(--ink-muted); }
-@media (max-width: 520px) {
-  .suggested-ride { flex-direction: column; align-items: stretch; }
-}
+.menu-card:hover { border-color: var(--gold); transform: translateY(-1px); }
+.menu-card:focus-visible { outline: 2px solid var(--gold); }
+.menu-card-icon { font-size: 28px; line-height: 1; margin-bottom: 4px; }
+.menu-card-title { font-size: 17px; font-weight: 700; color: var(--ink); }
+.menu-card-blurb { font-size: 13.5px; color: var(--ink-muted); }

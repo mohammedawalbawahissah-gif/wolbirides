@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "WolbiRides Driver",
+    "name": "WolbiRides Rider",
     "slug": "wolbirides-mobile-driver",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -26,11 +26,12 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ],
       "package": "com.wolbi.wolbirides.driver"
     },
@@ -58,7 +59,11 @@
     ],
     "extra": {
       "apiBaseUrl": "http://172.20.10.3:8001/api",
-      "wsBaseUrl": "ws://172.20.10.3:8001"
-    }
+      "wsBaseUrl": "ws://172.20.10.3:8001",
+      "eas": {
+        "projectId": "3474fd3a-314b-41b3-ac2d-32018766f6fc"
+      }
+    },
+    "owner": "mohammedawal"
   }
 }
