@@ -1,6 +1,7 @@
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, useMap } from "react-leaflet";
 import { useEffect } from "react";
 import L from "leaflet";
+import BaseMap from "./BaseMap";
 import "./TripMap.css";
 
 const pickupIcon = new L.DivIcon({
@@ -51,10 +52,7 @@ export default function TripMap({
   return (
     <div className="trip-map">
       <MapContainer center={[pickup.lat, pickup.lng]} zoom={15} style={{ height: "220px", width: "100%" }} zoomControl={false}>
-        <TileLayer
-          attribution='&copy; OpenStreetMap contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <BaseMap />
         <Polyline positions={[[pickup.lat, pickup.lng], [destination.lat, destination.lng]]} pathOptions={{ color: "#B8860B", weight: 3, dashArray: "6 8" }} />
         <Marker position={[pickup.lat, pickup.lng]} icon={pickupIcon} />
         <Marker position={[destination.lat, destination.lng]} icon={destIcon} />

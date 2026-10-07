@@ -41,12 +41,32 @@ function mapHtml(center: LatLng) {
   return `<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
 <style>html,body,#map{height:100%;margin:0}</style>
 </head><body><div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script>
   var map = L.map('map', { zoomControl: false }).setView([${center.lat}, ${center.lng}], 15);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+  // Sharp vector map (OpenFreeMap: free for commercial use, no key). If it can't load, or the phone has no WebGL,
+  // fall back to the plain OpenStreetMap tiles so the screen is never blank.
+  function addBaseMap(map) {
+    var vec = null, loaded = false, done = false;
+    function raster() { L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map); }
+    function fallBack() { if (loaded || done) return; done = true; try { if (vec) map.removeLayer(vec); } catch (e) {} raster(); }
+    try {
+      if (!(window.maplibregl && L.maplibreGL)) { done = true; return raster(); }
+      vec = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/liberty',
+        attributionControl: { customAttribution: 'OpenFreeMap &copy; OpenMapTiles Data from OpenStreetMap' } });
+      vec.addTo(map);
+      var gl = vec.getMaplibreMap();
+      gl.once('load', function () { loaded = true; });
+      gl.on('error', function (e) { if (!e.tile && !e.sourceId) fallBack(); });
+      setTimeout(fallBack, 8000);
+    } catch (e) { fallBack(); }
+  }
+  addBaseMap(map);
   var marker = null;
   window.setMarker = function (lat, lng, fly) {
     var pos = [lat, lng];
@@ -66,8 +86,7 @@ function mapHtml(center: LatLng) {
  * field rather than an always-visible inline map, so the booking screen stays
  * short until a location is actually being chosen.
  *
- * Uses OpenStreetMap tiles in a WebView (see PinPickerMap.tsx) rather than
- * react-native-maps/Google Maps — no API key decided yet (PRD Section 12).
+ * Shows an OpenFreeMap vector map in a WebView rather than react-native-maps/Google Maps — no API key needed.
  * Search as you type goes through the WolbiRides backend (/places/search), the same as web.
  */
 export default function LocationPickerModal({

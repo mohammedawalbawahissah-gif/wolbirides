@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { api } from "../api/client";
+import BaseMap from "./BaseMap";
 import { PINNED_LABEL, reverseGeocode, shortLabel } from "../geocode";
 import "./LocationPickerModal.css";
 
@@ -97,7 +98,7 @@ function FixSize() {
  * the page, so the booking screen stays short until a location is actually
  * being chosen.
  *
- * Uses OpenStreetMap tiles via Leaflet. Search results as you type come from the WolbiRides
+ * Shows an OpenFreeMap vector map via Leaflet (BaseMap.tsx). Search results as you type come from the WolbiRides
  * backend (/places/search): places ops have added first, then an outside map service.
  */
 export default function LocationPickerModal({
@@ -223,10 +224,7 @@ export default function LocationPickerModal({
 
         <div className="location-modal-map">
           <MapContainer center={[center.lat, center.lng]} zoom={15} style={{ height: "100%", width: "100%" }}>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            <BaseMap />
             <ClickCapture onPick={handleMapPick} />
             <FlyTo position={draft} />
             <FixSize />

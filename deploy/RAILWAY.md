@@ -119,6 +119,10 @@ addresses can stay as they are.
   `python manage.py import_places deploy/places_template.csv --dry-run` and again without `--dry-run`, or add them
   one by one in Django admin > Places. Later you can set `GEOCODER_PROVIDER=geoapify` (or `locationiq`) and `GEOCODER_API_KEY`.
 
+- **The map picture** is OpenFreeMap (free for commercial use, no key, no variable to set). If it can't load, or a phone has no
+  WebGL, the apps fall back to plain OpenStreetMap tiles by themselves. To use another provider's style later, set
+  `VITE_MAP_STYLE_URL` as a build variable on the web services.
+
 ## What won't work yet (by design)
 - **Mobile money (MoMo/Hubtel)** needs a licensed provider. Until then those payments stay pending; cash works.
   Never set the `*_DEV_AUTO_APPROVE` variables to True in production: that marks payments paid without taking any money.

@@ -1,5 +1,6 @@
-import { MapContainer, CircleMarker, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, CircleMarker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import BaseMap from "./BaseMap";
 import type { Incident } from "../api/client";
 
 /** WR-18: where open SOS alerts came from, so ops can direct help without leaving the dashboard. */
@@ -11,10 +12,7 @@ export default function SOSMap({ incidents }: { incidents: Incident[] }) {
   return (
     <div className="sos-map">
       <MapContainer center={center} zoom={15} style={{ height: 280, width: "100%" }} scrollWheelZoom={false}>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <BaseMap />
         {points.map((i) => (
           <CircleMarker
             key={i.id}
