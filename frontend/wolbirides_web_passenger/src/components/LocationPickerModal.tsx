@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
+import { api } from "../api/client";
 import { PINNED_LABEL, reverseGeocode, shortLabel } from "../geocode";
 import "./LocationPickerModal.css";
 
@@ -34,10 +35,14 @@ function round6(n: number) {
   return Math.round(n * 1e6) / 1e6;
 }
 
-interface GeocodeResult {
-  display_name: string;
-  lat: string;
-  lon: string;
+/** One answer from GET /api/places/search. `place` and `pickup` are spots WolbiRides knows; `map` came from the outside map service. */
+interface PlaceResult {
+  id: string;
+  name: string;
+  label: string;
+  lat: number;
+  lng: number;
+  source: "place" | "pickup" | "map";
 }
 
 
@@ -92,28 +97,28 @@ function FixSize() {
  * the page, so the booking screen stays short until a location is actually
  * being chosen.
  *
- * Uses OpenStreetMap tiles via Leaflet rather than Google Maps Platform —
- * WR-05.1 names Google Maps as the default, but that needs an API key
- * decision that hasn't been made yet (PRD Section 12). OSM tiles work
- * immediately with no key. Search reuses OSM's own free Nominatim geocoder.
+ * Uses OpenStreetMap tiles via Leaflet. Search results as you type come from the WolbiRides
+ * backend (/places/search): places ops have added first, then an outside map service.
  */
 export default function LocationPickerModal({
-  title, center, bounds, value, onConfirm, onClose,
+  title, center, zoneId, value, onConfirm, onClose,
 }: {
   title: string;
   center: LatLng;
-  bounds?: Bounds;
+  zoneId?: string; // the service area to search in; the backend knows its boundary
   value: LatLng | null;
   onConfirm: (pos: LatLng) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState(value?.label && value.label !== PINNED_LABEL ? value.label : "");
-  const [results, setResults] = useState<GeocodeResult[]>([]);
+  const [results, setResults] = useState<PlaceResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [draft, setDraft] = useState<LatLng | null>(value);
   const [resolving, setResolving] = useState(false);
   const lookupId = useRef(0);
+  const searchId = useRef(0);
+  const skipNextSearch = useRef(false); // the box was filled by picking a result or tapping the map, not by typing
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -125,36 +130,54 @@ export default function LocationPickerModal({
   async function runSearch() {
     const text = query.trim();
     if (text.length < 2) return;
+    const id = ++searchId.current;
     setSearching(true);
-    setSearched(true);
     try {
-      const params = new URLSearchParams({ format: "json", q: text, limit: "6", addressdetails: "0" });
-      if (bounds) {
-        params.set("viewbox", `${bounds.min_lng},${bounds.max_lat},${bounds.max_lng},${bounds.min_lat}`);
-        params.set("bounded", "1");
-      }
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
-      setResults(await res.json());
+      const params: Record<string, string | number> = { q: text, lat: center.lat, lng: center.lng };
+      if (zoneId) params.zone = zoneId;
+      const { data } = await api.get<{ results: PlaceResult[] }>("/places/search", { params });
+      if (id !== searchId.current) return; // a newer search has started; this answer is out of date
+      setResults(data.results ?? []);
     } catch {
+      if (id !== searchId.current) return;
       setResults([]);
     } finally {
-      setSearching(false);
+      if (id === searchId.current) {
+        setSearching(false);
+        setSearched(true);
+      }
     }
   }
 
-  function pickResult(result: GeocodeResult) {
+  // Search as the passenger types: wait for a short pause so a fast typist sends one request, not ten.
+  useEffect(() => {
+    if (skipNextSearch.current) { skipNextSearch.current = false; return; }
+    const text = query.trim();
+    if (text.length < 2) { searchId.current++; setResults([]); setSearching(false); setSearched(false); return; }
+    const timer = setTimeout(runSearch, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  function pickResult(result: PlaceResult) {
     lookupId.current++; // a search result already has its name; drop any lookup still in flight
+    searchId.current++;
     setResolving(false);
-    const picked: LatLng = { lat: round6(Number(result.lat)), lng: round6(Number(result.lon)), label: shortLabel(result.display_name) };
+    const label = result.source === "map" ? shortLabel(result.label) : result.name;
+    const picked: LatLng = { lat: round6(result.lat), lng: round6(result.lng), label };
     setDraft(picked);
-    setQuery(result.display_name);
+    skipNextSearch.current = true;
+    setQuery(result.name);
     setResults([]);
+    setSearched(false);
   }
 
   async function handleMapPick(pos: LatLng) {
     const id = ++lookupId.current;
     setDraft(pos);
     setResults([]);
+    searchId.current++;
+    skipNextSearch.current = query !== "";
     setQuery("");
     setResolving(true);
     const name = await reverseGeocode(pos.lat, pos.lng);
@@ -162,6 +185,7 @@ export default function LocationPickerModal({
     setResolving(false);
     const label = name ? shortLabel(name) : PINNED_LABEL;
     setDraft({ ...pos, label });
+    skipNextSearch.current = (name ?? "") !== query;
     setQuery(name ?? "");
   }
 
@@ -175,7 +199,7 @@ export default function LocationPickerModal({
 
         <form className="location-modal-search" onSubmit={(e) => { e.preventDefault(); runSearch(); }}>
           <input ref={inputRef} type="text" value={query} placeholder="Search a place, e.g. Citadel Hostel"
-            onChange={(e) => { setQuery(e.target.value); setSearched(false); }} />
+            autoComplete="off" onChange={(e) => { setQuery(e.target.value); setSearched(false); }} />
           <button type="submit" className="btn btn-gold" disabled={searching || query.trim().length < 2}>
             {searching ? "Searching…" : "Search"}
           </button>
@@ -184,7 +208,12 @@ export default function LocationPickerModal({
         {results.length > 0 && (
           <div className="location-modal-results">
             {results.map((r, i) => (
-              <button key={i} className="location-modal-result" onClick={() => pickResult(r)}>{r.display_name}</button>
+              <button key={r.id + i} className="location-modal-result" onClick={() => pickResult(r)}>
+                <span className="location-modal-result-name">{r.name}</span>
+                {r.label && r.label !== r.name && (
+                  <span className="location-modal-result-sub">{r.label.startsWith(r.name) ? r.label.slice(r.name.length).replace(/^,\s*/, "") : r.label}</span>
+                )}
+              </button>
             ))}
           </div>
         )}

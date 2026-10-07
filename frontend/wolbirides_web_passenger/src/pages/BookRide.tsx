@@ -316,7 +316,7 @@ export default function BookRide() {
           title={picking === "pickup" ? (options.kind === "delivery" ? "Collect from" : "Set pickup")
             : (options.kind === "delivery" ? "Deliver to" : "Set destination")}
           center={(picking === "pickup" ? pickup : destination) ?? mapCenter}
-          bounds={zone.boundary}
+          zoneId={zone.id}
           value={picking === "pickup" ? pickup : destination}
           onConfirm={confirmPicked}
           onClose={() => setPicking(null)}

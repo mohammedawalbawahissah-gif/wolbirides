@@ -78,6 +78,9 @@ class Notification(TimeStampedModel):
     body = models.CharField(max_length=500, blank=True)
     link = models.CharField(max_length=255, blank=True)  # frontend route, e.g. /trip/<id>
     read = models.BooleanField(default=False)
+    # Set once the email / SMS copy has actually gone out, so a retry never sends it twice.
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    sms_sent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -112,11 +115,15 @@ def is_notification_enabled(user, category):
     return pref.enabled if pref else True
 
 
-def notify(user, title, body="", category=Notification.Category.SYSTEM, link=""):
+def notify(user, title, body="", category=Notification.Category.SYSTEM, link="", channels=None):
     """
     Small helper so other apps don't need to know the model's field names.
     Silently no-ops for optional categories the user has turned off (see
     is_notification_enabled) — functional categories always go through.
+
+    Besides the bell and phone push, a notification can also go out by email and/or SMS: pass
+    channels=("sms",) / ("email",) / ("email", "sms") to choose, or leave it None to use the
+    category default (core/channels.py).
     """
     if not is_notification_enabled(user, category):
         return None
@@ -126,7 +133,24 @@ def notify(user, title, body="", category=Notification.Category.SYSTEM, link="")
     from django.db import transaction
 
     transaction.on_commit(lambda: _queue_push(notification.id))
+    from core.channels import channels_for
+
+    wanted = channels_for(category, channels)
+    if wanted:
+        transaction.on_commit(lambda: _queue_delivery(notification.id, wanted))
     return notification
+
+
+def _queue_delivery(notification_id, wanted):
+    """Best-effort, like push: a broker hiccup must never break whatever triggered the notification."""
+    try:
+        from core.tasks import deliver_channels
+
+        deliver_channels.delay(str(notification_id), list(wanted))
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning("Couldn't queue email/SMS for notification %s", notification_id)
 
 
 def _queue_push(notification_id):

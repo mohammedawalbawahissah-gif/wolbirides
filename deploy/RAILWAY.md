@@ -108,6 +108,17 @@ When all three work, run `python3 deploy/railway_env.py --hosts-only`, enter the
 then redeploy those three. Your secret key, admin path and everyone's sign-ins are untouched. The old `*.up.railway.app`
 addresses can stay as they are.
 
+## Notifications by email and SMS, and place search
+- **Email and SMS:** nothing to set up beyond your Resend and Africa's Talking variables. The `worker` service sends them,
+  so it must be running and must have the same variables as `backend`. SMS costs per message, so only these go by text:
+  rider assigned, rider close by, trip cancelled, "Are you OK?" check, courier assigned, new delivery request (to riders),
+  payouts, rider verification results and SOS (to staff). Account notices (support, bundles, receipts) go by email.
+  Set `NOTIFY_CHANNELS_ENABLED=False` on `backend`, `worker` and `beat` to switch both off.
+- **Place search:** works with no setup (it asks OpenStreetMap). For good results add the places people actually say
+  (hostels, halls, gates, markets): edit `deploy/places_template.csv`, then run
+  `python manage.py import_places deploy/places_template.csv --dry-run` and again without `--dry-run`, or add them
+  one by one in Django admin > Places. Later you can set `GEOCODER_PROVIDER=geoapify` (or `locationiq`) and `GEOCODER_API_KEY`.
+
 ## What won't work yet (by design)
 - **Mobile money (MoMo/Hubtel)** needs a licensed provider. Until then those payments stay pending; cash works.
   Never set the `*_DEV_AUTO_APPROVE` variables to True in production: that marks payments paid without taking any money.

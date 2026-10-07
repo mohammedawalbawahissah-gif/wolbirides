@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from zones.models import PickupPoint, ServiceZone
+from zones.models import PickupPoint, Place, ServiceZone
 
 
 class PickupPointInline(admin.TabularInline):
@@ -18,3 +18,11 @@ class ServiceZoneAdmin(admin.ModelAdmin):
 class PickupPointAdmin(admin.ModelAdmin):
     list_display = ["name", "zone", "is_campus_point"]
     list_filter = ["zone", "is_campus_point"]
+
+
+@admin.register(Place)
+class PlaceAdmin(admin.ModelAdmin):
+    list_display = ["name", "area", "zone", "popularity", "is_active"]
+    list_editable = ["popularity", "is_active"]
+    list_filter = ["zone", "is_active"]
+    search_fields = ["name", "aliases", "area"]

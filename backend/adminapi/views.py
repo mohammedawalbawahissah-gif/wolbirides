@@ -146,7 +146,7 @@ class AdminDriverVerifyView(APIView):
             "suspend": ("Account suspended", "Your rider account has been suspended pending review."),
         }
         title, body = notify_copy[action]
-        notify(driver.user, title, body, category="driver", link="/profile")
+        notify(driver.user, title, body, category="driver", link="/profile", channels=("email", "sms"))
 
         return Response(DriverSerializer(driver).data)
 

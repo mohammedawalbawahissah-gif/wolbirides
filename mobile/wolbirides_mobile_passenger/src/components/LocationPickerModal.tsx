@@ -4,6 +4,7 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { colors, radii, spacing, typography } from "../theme";
+import { api } from "../api/client";
 import { PINNED_LABEL, reverseGeocode, shortLabel } from "../geocode";
 import { Button } from "./ui";
 
@@ -20,10 +21,14 @@ export interface Bounds {
   max_lng: number;
 }
 
-interface GeocodeResult {
-  display_name: string;
-  lat: string;
-  lon: string;
+/** One answer from GET /api/places/search. `place` and `pickup` are spots WolbiRides knows; `map` came from the outside map service. */
+interface PlaceResult {
+  id: string;
+  name: string;
+  label: string;
+  lat: number;
+  lng: number;
+  source: "place" | "pickup" | "map";
 }
 
 // Six decimal places is ~11cm of precision — plenty for ride-hailing, and matches
@@ -63,15 +68,15 @@ function mapHtml(center: LatLng) {
  *
  * Uses OpenStreetMap tiles in a WebView (see PinPickerMap.tsx) rather than
  * react-native-maps/Google Maps — no API key decided yet (PRD Section 12).
- * Search reuses OSM's own free Nominatim geocoder, the same as web.
+ * Search as you type goes through the WolbiRides backend (/places/search), the same as web.
  */
 export default function LocationPickerModal({
-  visible, title, center, bounds, value, onConfirm, onClose,
+  visible, title, center, zoneId, value, onConfirm, onClose,
 }: {
   visible: boolean;
   title: string;
   center: LatLng;
-  bounds?: Bounds;
+  zoneId?: string; // the service area to search in; the backend knows its boundary
   value: LatLng | null;
   onConfirm: (pos: LatLng) => void;
   onClose: () => void;
@@ -79,7 +84,9 @@ export default function LocationPickerModal({
   const [query, setQuery] = useState(value?.label && value.label !== PINNED_LABEL ? value.label : "");
   const [resolving, setResolving] = useState(false);
   const lookupId = useRef(0);
-  const [results, setResults] = useState<GeocodeResult[]>([]);
+  const searchId = useRef(0);
+  const skipNextSearch = useRef(false); // the box was filled by picking a result or tapping the map, not by typing
+  const [results, setResults] = useState<PlaceResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [draft, setDraft] = useState<LatLng | null>(value);
@@ -97,40 +104,58 @@ export default function LocationPickerModal({
   async function runSearch() {
     const text = query.trim();
     if (text.length < 2) return;
+    const id = ++searchId.current;
     setSearching(true);
-    setSearched(true);
     try {
-      const params = new URLSearchParams({ format: "json", q: text, limit: "6", addressdetails: "0" });
-      if (bounds) {
-        params.set("viewbox", `${bounds.min_lng},${bounds.max_lat},${bounds.max_lng},${bounds.min_lat}`);
-        params.set("bounded", "1");
-      }
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
-      setResults(await res.json());
+      const params: Record<string, string | number> = { q: text, lat: center.lat, lng: center.lng };
+      if (zoneId) params.zone = zoneId;
+      const { data } = await api.get<{ results: PlaceResult[] }>("/places/search", { params });
+      if (id !== searchId.current) return; // a newer search has started; this answer is out of date
+      setResults(data.results ?? []);
     } catch {
+      if (id !== searchId.current) return;
       setResults([]);
     } finally {
-      setSearching(false);
+      if (id === searchId.current) {
+        setSearching(false);
+        setSearched(true);
+      }
     }
   }
+
+  // Search as the passenger types: wait for a short pause so a fast typist sends one request, not ten.
+  useEffect(() => {
+    if (skipNextSearch.current) { skipNextSearch.current = false; return; }
+    const text = query.trim();
+    if (text.length < 2) { searchId.current++; setResults([]); setSearching(false); setSearched(false); return; }
+    const timer = setTimeout(runSearch, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   function applyDraft(pos: LatLng) {
     setDraft(pos);
     webviewRef.current?.injectJavaScript(`window.setMarker && window.setMarker(${pos.lat}, ${pos.lng}, true); true;`);
   }
 
-  function pickResult(result: GeocodeResult) {
+  function pickResult(result: PlaceResult) {
     lookupId.current++; // a search result already has its name; drop any lookup still in flight
+    searchId.current++;
     setResolving(false);
-    const picked: LatLng = { lat: round6(Number(result.lat)), lng: round6(Number(result.lon)), label: shortLabel(result.display_name) };
-    setQuery(result.display_name);
+    const label = result.source === "map" ? shortLabel(result.label) : result.name;
+    const picked: LatLng = { lat: round6(result.lat), lng: round6(result.lng), label };
+    skipNextSearch.current = true;
+    setQuery(result.name);
     setResults([]);
+    setSearched(false);
     applyDraft(picked);
   }
 
   async function handleMapPick(lat: number, lng: number) {
     const id = ++lookupId.current;
     const pos = { lat: round6(lat), lng: round6(lng) };
+    searchId.current++;
+    skipNextSearch.current = query !== "";
     setQuery("");
     setResults([]);
     setDraft(pos);
@@ -140,6 +165,7 @@ export default function LocationPickerModal({
     if (id !== lookupId.current) return; // tapped somewhere else meanwhile
     setResolving(false);
     setDraft({ ...pos, label: name ? shortLabel(name) : PINNED_LABEL });
+    skipNextSearch.current = (name ?? "") !== query;
     setQuery(name ?? "");
   }
 
@@ -161,10 +187,16 @@ export default function LocationPickerModal({
       </View>
 
       {results.length > 0 && (
-        <FlatList data={results} keyExtractor={(_, i) => String(i)} style={styles.results}
+        <FlatList data={results} keyExtractor={(item, i) => item.id + i} style={styles.results}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.result} onPress={() => pickResult(item)}>
-              <Text style={styles.resultText}>{item.display_name}</Text>
+              <Text style={styles.resultText}>{item.name}</Text>
+              {item.label !== item.name && (
+                <Text style={styles.resultSub} numberOfLines={1}>
+                  {item.label.startsWith(item.name) ? item.label.slice(item.name.length).replace(/^,\s*/, "") : item.label}
+                </Text>
+              )}
             </TouchableOpacity>
           )}
         />
@@ -210,7 +242,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, fontSize: 15, backgroundColor: colors.paperRaised, color: colors.ink },
   results: { maxHeight: 200, marginTop: spacing.sm, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line },
   result: { paddingVertical: 10, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.line },
-  resultText: { fontSize: 14, color: colors.ink },
+  resultText: { fontSize: 14, fontWeight: "600", color: colors.ink },
+  resultSub: { fontSize: 12.5, color: colors.inkMuted, marginTop: 2 },
   empty: { fontSize: 13.5, color: colors.inkMuted, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   map: { flex: 1, margin: spacing.md, borderRadius: radii.md, overflow: "hidden", borderWidth: 1, borderColor: colors.line },
   footer: { flexDirection: "row", gap: spacing.sm, padding: spacing.md },

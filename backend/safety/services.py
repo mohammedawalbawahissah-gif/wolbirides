@@ -141,7 +141,7 @@ def run_safety_checks(now=None):
             continue
         SafetyCheckIn.objects.create(trip=trip, reason="trip_overdue")
         notify(trip.passenger, "Are you OK?", "Your trip is taking longer than expected. Tap to let us know.",
-               category=Notification.Category.TRIP, link=f"/trip/{trip.id}")
+               category=Notification.Category.TRIP, link=f"/trip/{trip.id}", channels=("sms",))
         _broadcast_check_in(trip)
         created += 1
 
@@ -188,7 +188,7 @@ def _escalate(check_in, now):
     )
     for staff in User.objects.filter(role__in=["admin", "support"], is_active=True):
         notify(staff, "Unanswered safety check-in", f"Trip {str(trip.id)[:8]} is overdue and the passenger hasn't replied.",
-               category=Notification.Category.INCIDENT, link="/incidents")
+               category=Notification.Category.INCIDENT, link="/incidents", channels=("email", "sms"))
     passenger = trip.passenger
     if passenger.emergency_contact_phone:
         from accounts.services import _send_sms

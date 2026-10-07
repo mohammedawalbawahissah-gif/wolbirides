@@ -733,7 +733,7 @@ def accept_trip(trip, driver):
     from core.models import notify
 
     notify(trip.passenger, "Rider assigned", f"{driver.user.name or 'Your rider'} is on the way.",
-           category="trip", link=f"/trip/{trip.id}")
+           category="trip", link=f"/trip/{trip.id}", channels=("sms",))
     for other in joined:
         _broadcast_trip_update(other)
         notify(other.passenger, "Shared ride matched", f"{driver.user.name or 'Your rider'} is on the way.",
@@ -822,7 +822,8 @@ def mark_driver_arriving(trip):
 
     from core.models import notify
 
-    notify(trip.passenger, "Your rider is close by", "Head to your pickup point now.", category="trip", link=f"/trip/{trip.id}")
+    notify(trip.passenger, "Your rider is close by", "Head to your pickup point now.", category="trip", link=f"/trip/{trip.id}",
+           channels=("sms",))
     return trip
 
 
@@ -851,7 +852,7 @@ def _finish(trip, fare_final=None):
     from core.models import notify
 
     notify(trip.passenger, "Trip complete", f"GH₵{trip.fare_final}. Thanks for riding with us.",
-           category="trip", link=f"/trip/{trip.id}")
+           category="trip", link=f"/trip/{trip.id}", channels=("email",))
     if trip.driver:
         notify(trip.driver.user, "Trip complete", f"GH₵{trip.fare_final} added to your earnings.",
                category="trip", link="/earnings")
@@ -902,9 +903,9 @@ def cancel_trip(trip, cancelled_by, reason=""):
     from core.models import notify
 
     if cancelled_by != "passenger":
-        notify(trip.passenger, "Trip cancelled", reason or "Your trip was cancelled.", category="trip", link="/")
+        notify(trip.passenger, "Trip cancelled", reason or "Your trip was cancelled.", category="trip", link="/", channels=("sms",))
     if trip.driver and cancelled_by != "driver":
-        notify(trip.driver.user, "Trip cancelled", reason or "The trip was cancelled.", category="trip", link="/")
+        notify(trip.driver.user, "Trip cancelled", reason or "The trip was cancelled.", category="trip", link="/", channels=("sms",))
     elif not trip.driver:
         # A pending offer (matching, not yet accepted) has no trip.driver yet — tell whoever it
         # was offered to that it's gone, so their countdown doesn't sit there for nothing.
@@ -1049,7 +1050,7 @@ def admin_offer_to_driver(trip, driver, admin):
     d = trip.delivery
     notify(driver.user, "New delivery request",
            f"{(d.task_description or d.package_description or 'A delivery')[:80]}. Review it under Requests.",
-           category="trip", link="/requests")
+           category="trip", link="/requests", channels=("sms",))
     return trip
 
 
@@ -1068,7 +1069,8 @@ def assign_delivery_to_external(trip, courier, admin):
         trip.delivery.save(update_fields=["external_courier", "updated_at"])
         _log_event(trip, "assigned_external", {"courier_id": str(courier.id), "admin_id": str(admin.id)})
     _broadcast_trip_update(trip)
-    notify(trip.passenger, "Courier assigned", f"{courier.name} is on the way to collect it.", category="trip", link=f"/trip/{trip.id}")
+    notify(trip.passenger, "Courier assigned", f"{courier.name} is on the way to collect it.", category="trip", link=f"/trip/{trip.id}",
+           channels=("sms",))
     return trip
 
 

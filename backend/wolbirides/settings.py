@@ -202,6 +202,7 @@ REST_FRAMEWORK = {
         'anon': '30/hour',
         # Per signed-in user, for actions that cost money or can spam (DRF ScopedRateThrottle + throttle_scope).
         'assistant': '30/hour',
+        'place_search': '600/hour',
         'trip_request': '30/hour',
         'trip_share': '20/hour',
         'voucher_redeem': '10/hour',
@@ -302,13 +303,17 @@ DEFAULT_DRIVER_COMMISSION_RATE = float(os.environ.get('DEFAULT_DRIVER_COMMISSION
 RIDER_PASS_REQUIRED = os.environ.get('RIDER_PASS_REQUIRED', 'False').lower() in ('1', 'true', 'yes')
 RIDER_PASS_TRIAL_DAYS = int(os.environ.get('RIDER_PASS_TRIAL_DAYS', '14'))
 
-# File uploads (driver documents, vehicle/profile photos) are stored in Cloudflare R2 — see core/storage.py.
-# R2_PUBLIC_BASE_URL is where the bucket is served from (a custom domain on the bucket, or its r2.dev address).
+# File uploads are stored in Cloudflare R2 — see core/storage.py.
+#   R2_BUCKET            public bucket for profile and vehicle photos
+#   R2_PUBLIC_BASE_URL   where that bucket is served from (a custom domain on it, or its r2.dev address)
+#   R2_PRIVATE_BUCKET    private bucket for identity documents; never public, served only via signed links
 R2_ACCOUNT_ID = os.environ.get('R2_ACCOUNT_ID', '')
 R2_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID', '')
 R2_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY', '')
 R2_BUCKET = os.environ.get('R2_BUCKET', '')
 R2_PUBLIC_BASE_URL = os.environ.get('R2_PUBLIC_BASE_URL', '')
+R2_PRIVATE_BUCKET = os.environ.get('R2_PRIVATE_BUCKET', '')
+R2_SIGNED_URL_SECONDS = int(os.environ.get('R2_SIGNED_URL_SECONDS', '600'))
 
 
 # Database
@@ -387,6 +392,13 @@ SAFETY_EMERGENCY_NUMBER = os.environ.get("SAFETY_EMERGENCY_NUMBER", "112")
 
 # WR-18 trip sharing + check-ins
 PASSENGER_WEB_URL = os.environ.get("PASSENGER_WEB_URL", "http://localhost:5174")
+
+# Email and SMS copies of notifications (see core/channels.py). On by default; set NOTIFY_CHANNELS_ENABLED=False to
+# switch both off (the bell and phone push are unaffected). Always off under `manage.py test`, so the suite never
+# needs a broker; the tests that cover delivery switch it on themselves.
+import sys as _sys  # noqa: E402
+
+NOTIFY_CHANNELS_ENABLED = os.environ.get("NOTIFY_CHANNELS_ENABLED", "True").lower() in ("1", "true", "yes") and "test" not in _sys.argv
 SAFETY_EXPECTED_SPEED_KMH = float(os.environ.get("SAFETY_EXPECTED_SPEED_KMH", "15"))
 SAFETY_OVERDUE_FACTOR = float(os.environ.get("SAFETY_OVERDUE_FACTOR", "2"))
 SAFETY_OVERDUE_GRACE_MINUTES = float(os.environ.get("SAFETY_OVERDUE_GRACE_MINUTES", "10"))
@@ -456,3 +468,12 @@ if ADMIN_PATH in ('admin', 'api', 'ws', 'static'):
 
         raise ImproperlyConfigured('DJANGO_ADMIN_PATH must not be a well-known path like "admin" in production.')
 ADMIN_PATH += '/'
+
+# --- Place search (zones/places.py) ---
+# Ops-curated places and pickup points are searched first. When they don't fill the list, an outside map service
+# is asked: "nominatim" (OpenStreetMap, free, no key, ~1 request a second, thin data in Tamale), "locationiq" or
+# "geoapify" (both need GEOCODER_API_KEY), or "" to use only the curated places.
+GEOCODER_PROVIDER = os.environ.get("GEOCODER_PROVIDER", "nominatim").strip().lower()
+GEOCODER_API_KEY = os.environ.get("GEOCODER_API_KEY", "")
+GEOCODER_USER_AGENT = os.environ.get("GEOCODER_USER_AGENT", "WolbiRides/1.0 (https://wolbiroyal.com)")
+GEOCODER_CACHE_SECONDS = int(os.environ.get("GEOCODER_CACHE_SECONDS", "86400"))

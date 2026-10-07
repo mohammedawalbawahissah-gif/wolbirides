@@ -38,3 +38,28 @@ class PickupPoint(TimeStampedModel):
 
     def __str__(self):
         return f"{self.name} ({self.zone.name})"
+
+
+class Place(TimeStampedModel):
+    """A named spot people search for: a hostel, hall, gate, market, clinic, church. Ops add these (Django admin or
+    `manage.py import_places`), and they are searched BEFORE any outside map service, because for a campus-first
+    service a hand-checked list of the places students actually say beats a world map's guess. Pickup points are
+    searched too, so they need not be duplicated here."""
+
+    zone = models.ForeignKey(ServiceZone, null=True, blank=True, on_delete=models.CASCADE, related_name="places",
+                             help_text="Leave empty for a place that belongs to every zone.")
+    name = models.CharField(max_length=150)
+    aliases = models.CharField(max_length=300, blank=True,
+                               help_text="Other names people use, separated by commas. e.g. 'Citadel, Citadel Hostel Annex'")
+    area = models.CharField(max_length=150, blank=True, help_text="Shown under the name, e.g. 'Nyankpala campus'")
+    latitude = models.DecimalField(max_digits=9, decimal_places=6)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6)
+    is_active = models.BooleanField(default=True)
+    popularity = models.PositiveIntegerField(default=0, help_text="Higher shows first when several places match.")
+
+    class Meta:
+        ordering = ["-popularity", "name"]
+        indexes = [models.Index(fields=["zone", "is_active"])]
+
+    def __str__(self):
+        return self.name

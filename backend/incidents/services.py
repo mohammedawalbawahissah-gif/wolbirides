@@ -88,7 +88,7 @@ def raise_sos(trip, user, lat=None, lng=None, note=""):
     for staff in User.objects.filter(role__in=["admin", "support"], is_active=True):
         try:
             notify(staff, f"SOS: {who} needs help", description, category=Notification.Category.INCIDENT,
-                   link="/incidents")
+                   link="/incidents", channels=("email", "sms"))
         except Exception:
             logger.exception("Failed to notify staff %s of SOS", staff.id)
 

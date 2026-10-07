@@ -38,3 +38,48 @@ def flush_expired_tokens():
     from django.core.management import call_command
 
     call_command("flushexpiredtokens")
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def deliver_channels(self, notification_id, channels):
+    """Send the email and/or SMS copy of a notification. Safe to retry: each channel is stamped once it has
+    gone out, so a retry only repeats the one that failed."""
+    import logging
+
+    from django.utils import timezone
+
+    from accounts.services import _send_email, _send_sms
+    from core.channels import EMAIL, SMS, email_parts, sms_text
+    from core.models import Notification
+
+    log = logging.getLogger(__name__)
+    n = Notification.objects.select_related("user").filter(id=notification_id).first()
+    if not n or not n.user.is_active:
+        return {}
+    sent, failed = {}, []
+
+    if EMAIL in channels and not n.email_sent_at and n.user.email:
+        try:
+            subject, body = email_parts(n)
+            _send_email(n.user.email, subject, body)
+            n.email_sent_at = timezone.now()
+            n.save(update_fields=["email_sent_at"])
+            sent[EMAIL] = True
+        except Exception as exc:
+            log.warning("Email for notification %s failed: %s", notification_id, exc)
+            failed.append(EMAIL)
+
+    phone = n.user.real_phone
+    if SMS in channels and not n.sms_sent_at and phone:
+        try:
+            _send_sms(phone, sms_text(n))
+            n.sms_sent_at = timezone.now()
+            n.save(update_fields=["sms_sent_at"])
+            sent[SMS] = True
+        except Exception as exc:
+            log.warning("SMS for notification %s failed: %s", notification_id, exc)
+            failed.append(SMS)
+
+    if failed:
+        raise self.retry(exc=RuntimeError("delivery failed: " + ", ".join(failed)))
+    return sent
