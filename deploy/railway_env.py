@@ -9,7 +9,7 @@ Asks for your values (secrets typed hidden, never printed), generates the Django
 and writes two files you paste into Railway's "Raw Editor" (service > Variables):
 
     deploy/.env.railway.backend   for the backend, worker and beat services (same block in all three)
-    deploy/.env.railway.web       for passenger-web, rider-web and admin-web (same block in all three)
+    deploy/.env.railway.web       for the three web services (same block in all three)
 
 Both files are git-ignored and owner-only. Delete them once pasted. See deploy/RAILWAY.md for the whole walkthrough.
 """
@@ -130,6 +130,7 @@ def main():
     ]
     web_lines = [
         "# Paste into Railway > passenger-web, rider-web AND admin-web > Variables > Raw Editor.",
+        "PORT=80",
         "BACKEND_ORIGIN=http://${{backend.RAILWAY_PRIVATE_DOMAIN}}:${{backend.PORT}}",
         "NGINX_RESOLVER=[fd12::10] ipv6=on",
     ]

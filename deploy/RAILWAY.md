@@ -13,7 +13,9 @@ You will end up with **eight things** in one Railway project:
 | `rider-web` | rider website | `frontend/wolbirides_web_driver` |
 | `admin-web` | ops dashboard | `frontend/wolbirides_admin` |
 
-The names matter: the variables refer to `Postgres`, `Redis` and `backend` by name. Railway's screens change from time to
+Only `Postgres`, `Redis` and `backend` must be named exactly this: the variables refer to them by name. The three web
+services can be called anything (for example `passenger`, `rider`, `admin`); wherever this guide says `passenger-web`, `rider-web` or
+`admin-web`, use your own names. Railway's screens change from time to
 time; if a label below isn't exactly what you see, look for the closest one.
 
 Railway handles HTTPS, public addresses and the private network between services. You do not need a server or Caddy.
@@ -54,6 +56,7 @@ The first builds may fail or crash because the variables aren't set yet. That is
 Open each of these four services > **Settings > Networking** > **Generate Domain**:
 `passenger-web`, `rider-web`, `admin-web` and `backend` (the backend one is only for Django's own admin page; skip it if
 you don't want that page). You get addresses like `passenger-web-production-1a2b.up.railway.app`.
+If Railway asks which **port** the service listens on: `backend` = **8000**, each of the three web services = **80**.
 Write the four addresses down. Do **not** generate domains for `worker`, `beat` or the databases.
 
 ## Step 5. Build your variables (guided)
