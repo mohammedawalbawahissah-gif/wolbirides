@@ -21,4 +21,7 @@ EXPOSE 8000
 
 # One image, three roles (see docker-compose.yml): the ASGI server below
 # (Daphne serves HTTP and websockets), a Celery worker, and Celery beat.
-CMD ["sh", "-c", "python manage.py migrate --noinput && daphne -b 0.0.0.0 -p 8000 wolbirides.asgi:application"]
+# PORT and BIND_HOST default to the docker-compose values; Railway sets PORT=8000 and BIND_HOST=:: (IPv6, needed
+# for its private network). If DJANGO_SUPERUSER_PHONE is set, an admin is created once (it does nothing if the
+# account already exists; remove the DJANGO_SUPERUSER_* variables after first sign-in).
+CMD ["sh", "-c", "python manage.py migrate --noinput && ([ -z \"$DJANGO_SUPERUSER_PHONE\" ] || python manage.py createsuperuser --noinput || true) && exec daphne -b ${BIND_HOST:-0.0.0.0} -p ${PORT:-8000} wolbirides.asgi:application"]
