@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core import storage
 from drivers.models import Driver
 from drivers.serializers import (
     DriverApplicationSerializer,
@@ -90,7 +91,7 @@ class DriverMeView(APIView):
                 value = (request.data[field] or "").strip()
                 if value and not value.startswith("https://"):
                     return Response({field: ["Must be an https link to the uploaded document."]}, status=400)
-                setattr(driver, field, value)
+                setattr(driver, field, storage.canonicalize(value))
                 touched.append(field)
         # The active vehicle's roadworthy certificate is renewed yearly, so riders update it here.
         if "roadworthy_expiry" in request.data or "roadworthy_certificate" in request.data:
@@ -110,7 +111,7 @@ class DriverMeView(APIView):
                 if value and not value.startswith("https://"):
                     return Response({"roadworthy_certificate": ["Must be an https link to the uploaded document."]},
                                     status=400)
-                vehicle.roadworthy_certificate = value
+                vehicle.roadworthy_certificate = storage.canonicalize(value)
             vehicle.save(update_fields=["roadworthy_expiry", "roadworthy_certificate", "updated_at"])
         if "payout_phone" in request.data:
             from drivers.services import _normalize

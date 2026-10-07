@@ -75,9 +75,9 @@ class DocumentUploadView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request):
-        if not storage.is_configured():
+        if not storage.is_configured(request.data.get("kind", "")):
             return Response(
-                {"detail": "File uploads aren't configured yet — set the R2_* settings on the backend."},
+                {"detail": "File uploads aren't configured yet — set the R2_* settings (including R2_PRIVATE_BUCKET for documents) on the backend."},
                 status=503,
             )
 

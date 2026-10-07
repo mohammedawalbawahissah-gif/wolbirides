@@ -12,7 +12,7 @@ from core import storage
 
 R2 = dict(
     R2_ACCOUNT_ID="acct", R2_ACCESS_KEY_ID="key", R2_SECRET_ACCESS_KEY="secret",
-    R2_BUCKET="wr-files", R2_PUBLIC_BASE_URL="https://files.example.com/",
+    R2_BUCKET="wr-files", R2_PUBLIC_BASE_URL="https://files.example.com/", R2_PRIVATE_BUCKET="wr-private",
 )
 
 
@@ -30,7 +30,7 @@ class UploadToR2Tests(TestCase):
         self.api = APIClient()
         self.api.force_authenticate(self.user)
 
-    @override_settings(R2_ACCOUNT_ID="", R2_ACCESS_KEY_ID="", R2_SECRET_ACCESS_KEY="", R2_BUCKET="", R2_PUBLIC_BASE_URL="")
+    @override_settings(R2_ACCOUNT_ID="", R2_ACCESS_KEY_ID="", R2_SECRET_ACCESS_KEY="", R2_BUCKET="", R2_PUBLIC_BASE_URL="", R2_PRIVATE_BUCKET="")
     def test_not_configured_is_503(self):
         r = self.api.post("/api/uploads/document", {"kind": "profile_photo", "file": _image_bytes()}, format="multipart")
         self.assertEqual(r.status_code, 503)
@@ -50,12 +50,13 @@ class UploadToR2Tests(TestCase):
     def test_pdf_allowed_for_documents_only(self):
         pdf = io.BytesIO(b"%PDF-1.4 test"); pdf.name = "d.pdf"
         client = mock.Mock()
+        client.generate_presigned_url.return_value = "https://signed.example/doc.pdf?X-Amz-Signature=1"
         with mock.patch.object(storage, "_get_client", return_value=client):
             ok = self.api.post("/api/uploads/document", {"kind": "licence_document", "file": pdf}, format="multipart")
             pdf2 = io.BytesIO(b"%PDF-1.4 test"); pdf2.name = "d.pdf"
             bad = self.api.post("/api/uploads/document", {"kind": "profile_photo", "file": pdf2}, format="multipart")
         self.assertEqual(ok.status_code, 201)
-        self.assertTrue(ok.data["url"].endswith(".pdf"))
+        self.assertIn(".pdf?", ok.data["url"])  # a short-lived signed link: documents are private
         self.assertEqual(bad.status_code, 400)
         self.assertEqual(client.upload_fileobj.call_count, 1)
 

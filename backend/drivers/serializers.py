@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
+from core import storage
 from drivers.models import Driver, Vehicle, normalize_ghana_card
 
 
@@ -11,7 +12,26 @@ def _ghana_card(value):
         raise serializers.ValidationError(exc.messages[0]) from exc
 
 
+class PrivateFileField(serializers.URLField):
+    """A link to a document in the private bucket. Output: always a fresh short-lived signed link, so a
+    stored address is never exposed as-is. Input: a signed link the API handed out is saved as its plain
+    address, so an expiring URL never ends up in the database."""
+
+    def to_representation(self, value):
+        return storage.sign(super().to_representation(value))
+
+    def to_internal_value(self, data):
+        return storage.canonicalize(super().to_internal_value(data))
+
+
+def _doc():
+    return PrivateFileField(required=False, allow_blank=True)
+
+
 class VehicleSerializer(serializers.ModelSerializer):
+    registration_document = _doc()
+    roadworthy_certificate = _doc()
+
     class Meta:
         model = Vehicle
         fields = ["id", "plate_number", "vehicle_type", "registration_document", "photo",
@@ -24,15 +44,15 @@ class DriverApplicationSerializer(serializers.Serializer):
 
     licence_number = serializers.CharField(max_length=50)
     licence_expiry = serializers.DateField(required=False)
-    licence_document = serializers.URLField(required=False, allow_blank=True)
+    licence_document = _doc()
     # LI 2519 requirements for a commercial rider.
     ghana_card_number = serializers.CharField(max_length=20)
-    ghana_card_document = serializers.URLField(required=False, allow_blank=True)
+    ghana_card_document = _doc()
     # Optional: collected when the rider has them; they don't block verification.
     transport_union = serializers.CharField(max_length=120, required=False, allow_blank=True)
     union_membership_number = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    union_card_document = serializers.URLField(required=False, allow_blank=True)
-    roadworthy_certificate = serializers.URLField(required=False, allow_blank=True)
+    union_card_document = _doc()
+    roadworthy_certificate = _doc()
     roadworthy_expiry = serializers.DateField(required=False, allow_null=True)
     emergency_contact_name = serializers.CharField(required=False, allow_blank=True)
     emergency_contact_phone = serializers.CharField(required=False, allow_blank=True)
@@ -41,7 +61,7 @@ class DriverApplicationSerializer(serializers.Serializer):
     payout_provider = serializers.ChoiceField(choices=["momo", "hubtel"], required=False)
     plate_number = serializers.CharField(max_length=20)
     vehicle_photo = serializers.URLField(required=False, allow_blank=True)
-    vehicle_registration_document = serializers.URLField(required=False, allow_blank=True)
+    vehicle_registration_document = _doc()
 
     def validate_ghana_card_number(self, value):
         value = _ghana_card(value)
@@ -71,6 +91,8 @@ class DriverApplicationSerializer(serializers.Serializer):
 
 class DriverSerializer(serializers.ModelSerializer):
     vehicles = VehicleSerializer(many=True, read_only=True)
+    licence_document = _doc()
+    union_card_document = _doc()
 
     class Meta:
         model = Driver
@@ -89,6 +111,7 @@ class DriverPrivateSerializer(DriverSerializer):
     must not appear in anything a passenger or another rider can read."""
 
     compliance_missing = serializers.SerializerMethodField()
+    ghana_card_document = _doc()
 
     class Meta(DriverSerializer.Meta):
         fields = [*DriverSerializer.Meta.fields, "ghana_card_number", "ghana_card_document", "compliance_missing"]

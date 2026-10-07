@@ -86,7 +86,7 @@ export default function FileDrop({
 
         {state === "done" && value && (
           <div className="file-drop-preview">
-            {/\.(png|jpe?g|webp|gif)$/i.test(value) ? (
+            {/\.(png|jpe?g|webp|gif)(\?|$)/i.test(value) ? (
               <img src={value} alt="" />
             ) : (
               <div className="file-drop-doc-chip">📄 Document uploaded</div>
