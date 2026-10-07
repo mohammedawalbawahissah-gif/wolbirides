@@ -6,6 +6,8 @@ from drivers.views import (
     DriverMeView,
     DriverStatusView,
     DriverTripHistoryView,
+    RiderPassRefreshView,
+    RiderPassView,
 )
 
 urlpatterns = [
@@ -14,4 +16,6 @@ urlpatterns = [
     path("drivers/me/status", DriverStatusView.as_view(), name="driver-status"),
     path("drivers/me/trips", DriverTripHistoryView.as_view(), name="driver-trip-history"),
     path("drivers/me/earnings", DriverEarningsView.as_view(), name="driver-earnings"),
+    path("drivers/me/passes", RiderPassView.as_view(), name="driver-passes"),
+    path("drivers/me/passes/<uuid:pass_id>/refresh", RiderPassRefreshView.as_view(), name="driver-pass-refresh"),
 ]

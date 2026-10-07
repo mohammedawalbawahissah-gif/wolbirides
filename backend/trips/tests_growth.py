@@ -318,7 +318,7 @@ class DeliveryTests(DispatchTestBase):
     def test_pickup_can_be_confirmed_with_a_photo(self):
         trip, _ = self._delivery()
         services.accept_trip(trip, self.driver_b)
-        services.confirm_pickup(Trip.objects.get(id=trip.id), photo_url="https://res.cloudinary.com/x/pkg.jpg")
+        services.confirm_pickup(Trip.objects.get(id=trip.id), photo_url="https://files.example.com/x/pkg.jpg")
         trip.refresh_from_db()
         self.assertEqual(trip.status, Trip.Status.IN_PROGRESS)
 

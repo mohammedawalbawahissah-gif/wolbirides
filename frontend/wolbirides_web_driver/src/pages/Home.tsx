@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type ServiceZone } from "../api/client";
 import { useDriverContext } from "../components/DriverGate";
 import { useDispatchState } from "../components/DispatchLayer";
+import RiderPassCard from "../components/RiderPassCard";
 import "./Home.css";
 
 export default function Home() {
@@ -13,6 +14,7 @@ export default function Home() {
   const [toggling, setToggling] = useState(false);
   const [savingDeliveries, setSavingDeliveries] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passKey, setPassKey] = useState(0);
 
   useEffect(() => {
     api
@@ -46,6 +48,7 @@ export default function Home() {
       setError(err?.response?.data?.detail || "Couldn't update your status.");
     } finally {
       setToggling(false);
+      setPassKey((k) => k + 1); // going online may have just started the free trial
     }
   }
 
@@ -117,6 +120,8 @@ export default function Home() {
           </div>
 
           {error && <div className="auth-error">{error}</div>}
+
+          <RiderPassCard refreshKey={passKey} />
 
           {!driver.is_online && (
             <div className="card drive-hint-card">

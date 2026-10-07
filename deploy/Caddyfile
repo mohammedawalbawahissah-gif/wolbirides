@@ -1,0 +1,17 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Caddy gets and renews the HTTPS certificates itself and passes websockets through.
+{$PASSENGER_HOST} {
+	encode gzip
+	reverse_proxy passenger-web:80
+}
+{$DRIVER_HOST} {
+	encode gzip
+	reverse_proxy driver-web:80
+}
+{$ADMIN_HOST} {
+	encode gzip
+	reverse_proxy admin-web:80
+}

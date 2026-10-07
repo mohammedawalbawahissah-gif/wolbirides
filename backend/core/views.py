@@ -1,7 +1,6 @@
-from core.throttling import ActionRateThrottle
-import uuid
+import logging
 
-import cloudinary.uploader
+from core.throttling import ActionRateThrottle
 from django.conf import settings
 from PIL import Image
 from rest_framework import serializers
@@ -11,11 +10,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core import storage
 from core.models import Notification
 
-ALLOWED_KINDS = {"licence_document", "vehicle_registration_document", "vehicle_photo", "profile_photo"}
+ALLOWED_KINDS = {"licence_document", "vehicle_registration_document", "vehicle_photo", "profile_photo",
+                 "ghana_card_document", "union_card_document", "roadworthy_certificate"}
 IMAGE_ONLY_KINDS = {"vehicle_photo", "profile_photo"}
-DOCUMENT_KINDS = {"licence_document", "vehicle_registration_document"}  # image or PDF
+DOCUMENT_KINDS = {"licence_document", "vehicle_registration_document",  # image or PDF
+                  "ghana_card_document", "union_card_document", "roadworthy_certificate"}
+logger = logging.getLogger(__name__)
+
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024  # 8MB — plenty for a phone photo of a document
 
 
@@ -45,22 +49,35 @@ def _looks_like_valid_image(upload):
     return valid
 
 
+def _detected_type(upload, kind):
+    """The file's real type from its bytes (a key of storage.CONTENT_TYPES), or None if not allowed."""
+    if kind in DOCUMENT_KINDS and _looks_like_pdf(upload):
+        return "PDF"
+    upload.seek(0)
+    try:
+        fmt = Image.open(upload).format
+    except Exception:
+        fmt = None
+    upload.seek(0)
+    return fmt if fmt in storage.CONTENT_TYPES and fmt != "PDF" else None
+
+
 class DocumentUploadView(APIView):
     """
-    POST /api/uploads/document — multipart file upload proxied straight to
-    Cloudinary (WR-07.2 driver verification documents; also used for
-    passenger/driver profile photos). Keeping the Cloudinary secret on the
-    backend, rather than exposing an unsigned upload preset to the client,
-    is worth the extra hop for anything tied to identity documents.
+    POST /api/uploads/document — multipart file upload stored in Cloudflare R2
+    (WR-07.2 driver verification documents; also used for passenger/driver
+    profile photos). The R2 keys stay on the backend rather than being handed
+    to the client, which is worth the extra hop for anything tied to identity
+    documents.
     """
 
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
-        if not settings.CLOUDINARY_URL:
+        if not storage.is_configured():
             return Response(
-                {"detail": "File uploads aren't configured yet — set CLOUDINARY_URL on the backend."},
+                {"detail": "File uploads aren't configured yet — set the R2_* settings on the backend."},
                 status=503,
             )
 
@@ -77,7 +94,7 @@ class DocumentUploadView(APIView):
         # Validate actual file content, not just the size/kind — previously
         # any file type was accepted as long as it was under the size limit,
         # which meant arbitrary files (not just images/PDFs) could be stored
-        # in Cloudinary under identity-document folders.
+        # in storage under identity-document folders.
         if kind in IMAGE_ONLY_KINDS:
             if not _looks_like_valid_image(upload):
                 return Response({"detail": "That doesn't look like a valid image file."}, status=400)
@@ -85,17 +102,16 @@ class DocumentUploadView(APIView):
             if not (_looks_like_pdf(upload) or _looks_like_valid_image(upload)):
                 return Response({"detail": "Documents must be an image or PDF file."}, status=400)
 
+        file_type = _detected_type(upload, kind)
+        if file_type is None:  # unreachable after the checks above, but never store an unrecognised file
+            return Response({"detail": "Unsupported file type."}, status=400)
         try:
-            result = cloudinary.uploader.upload(
-                upload,
-                folder=f"wolbirides/{kind}",
-                public_id=str(uuid.uuid4()),
-                resource_type="auto",
-            )
+            url = storage.upload(upload, kind, file_type)
         except Exception:
+            logger.exception("R2 upload failed")
             return Response({"detail": "Upload failed — try again."}, status=502)
 
-        return Response({"url": result["secure_url"], "kind": kind}, status=201)
+        return Response({"url": url, "kind": kind}, status=201)
 
 
 class NotificationSerializer(serializers.ModelSerializer):

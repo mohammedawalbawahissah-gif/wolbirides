@@ -66,7 +66,17 @@ class SignupView(APIView):
 
 
 class LoginView(APIView):
-    """POST /api/auth/login — email+password sign-in."""
+    """
+    POST /api/auth/login — email+password sign-in for the passenger apps.
+
+    SECURITY: role-gated to "passenger" only. Before this check existed, this endpoint
+    authenticated ANY account regardless of role — a rider (role="driver") or admin account
+    could sign in here and receive a valid token pair, same as AdminLoginView already guarded
+    against for its own portal but this one never did. Password is still checked first, so a
+    wrong password always reads as "Incorrect email or password" for every role, same as before;
+    only a *correct* password for a non-passenger account now gets turned away, with a plain
+    explanation rather than being let through.
+    """
 
     permission_classes = [AllowAny]
     throttle_classes = [EmailLoginThrottle]
@@ -77,6 +87,32 @@ class LoginView(APIView):
         user, error = login_with_email(**serializer.validated_data)
         if error:
             return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+        if user.role != "passenger":
+            return Response({"detail": "This account is not authorized for the passenger app"}, status=403)
+        return _token_pair_response(user)
+
+
+class DriverLoginView(APIView):
+    """
+    POST /api/drivers/auth/login — email+password sign-in for the rider (driver-role) apps.
+
+    SECURITY: the counterpart to LoginView's new passenger gate — a passenger account must not
+    be able to sign in to the rider portal either. Previously both passenger and rider apps
+    shared the ungated /api/auth/login, so either account type could authenticate into either
+    portal. See LoginView's docstring for the full explanation.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [EmailLoginThrottle]
+
+    def post(self, request):
+        serializer = EmailLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user, error = login_with_email(**serializer.validated_data)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+        if user.role != "driver":
+            return Response({"detail": "This account is not authorized for the rider app"}, status=403)
         return _token_pair_response(user)
 
 

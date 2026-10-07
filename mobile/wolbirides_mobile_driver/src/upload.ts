@@ -3,7 +3,8 @@ import * as ImagePicker from "expo-image-picker";
 import { api } from "./api/client";
 
 export type UploadKind =
-  | "profile_photo" | "licence_document" | "vehicle_photo" | "vehicle_registration_document";
+  | "profile_photo" | "licence_document" | "vehicle_photo" | "vehicle_registration_document"
+  | "ghana_card_document" | "union_card_document" | "roadworthy_certificate";
 
 /**
  * Same endpoint and rules as the web FileDrop: POST /api/uploads/document

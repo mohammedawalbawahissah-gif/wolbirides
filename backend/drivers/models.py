@@ -1,4 +1,7 @@
+import re
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.models import TimeStampedModel
@@ -20,9 +23,19 @@ class Driver(TimeStampedModel):
         REJECTED = "rejected", "Rejected"
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="driver_profile")
-    licence_number = models.CharField(max_length=50)
+    licence_number = models.CharField(max_length=50, help_text="DVLA commercial rider's licence number")
     licence_expiry = models.DateField(null=True, blank=True)
-    licence_document = models.URLField(blank=True, help_text="Cloudinary URL")
+    licence_document = models.URLField(blank=True, help_text="File URL")
+    # Road Traffic Regulations 2026 (LI 2519): a commercial rider needs a valid Ghana Card and
+    # proof of membership of a commercial transport organization for motorcycles/tricycles.
+    # Ghana Card number is personal data: shown only to the rider themself and to admins.
+    ghana_card_number = models.CharField(max_length=20, blank=True, default="",
+                                         help_text="Format GHA-123456789-0")
+    ghana_card_document = models.URLField(blank=True, help_text="File URL")
+    transport_union = models.CharField(max_length=120, blank=True, default="",
+                                       help_text="e.g. National Union of Tricycle Operators, Tamale branch")
+    union_membership_number = models.CharField(max_length=50, blank=True, default="")
+    union_card_document = models.URLField(blank=True, help_text="File URL")
     verification_status = models.CharField(
         max_length=20, choices=VerificationStatus.choices, default=VerificationStatus.PENDING
     )
@@ -74,6 +87,19 @@ class Driver(TimeStampedModel):
             and self.current_zone_id is not None
         )
 
+    def compliance_missing(self):
+        """What a rider still has to provide before ops can verify them. Empty = complete.
+        Checked by the admin verify action. Union membership and the roadworthy certificate are
+        optional (collected when the rider has them), so they never block verification."""
+        missing = []
+        if not self.licence_number:
+            missing.append("licence_number")
+        if not self.ghana_card_number:
+            missing.append("ghana_card_number")
+        if not any(v.active for v in self.vehicles.all()):  # uses prefetch when present
+            missing.append("vehicle")
+        return missing
+
     def payout_destination(self):
         """(phone, provider) money actually goes to — payout_phone if the rider set one, else
         their account phone. Never blank: the account phone is always a real number."""
@@ -90,9 +116,82 @@ class Vehicle(TimeStampedModel):
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name="vehicles")
     plate_number = models.CharField(max_length=20, unique=True)
     vehicle_type = models.CharField(max_length=30, choices=VehicleType.choices, default=VehicleType.YELLOW_YELLOW)
-    registration_document = models.URLField(blank=True, help_text="Cloudinary URL")
-    photo = models.URLField(blank=True, help_text="Cloudinary URL")
+    registration_document = models.URLField(blank=True, help_text="File URL")
+    photo = models.URLField(blank=True, help_text="File URL")
+    # LI 2519: a commercial tricycle must be DVLA-registered for commercial use and roadworthy.
+    roadworthy_certificate = models.URLField(blank=True, help_text="File URL")
+    roadworthy_expiry = models.DateField(null=True, blank=True)
     active = models.BooleanField(default=True)
 
     def __str__(self):
         return f"{self.plate_number} ({self.driver})"
+
+
+def normalize_ghana_card(value):
+    """'gha 123456789 0' / 'GHA1234567890' -> 'GHA-123456789-0'. Raises ValidationError if it
+    can't be read as a Ghana Card PIN."""
+    digits = re.sub(r"[^0-9]", "", value or "")
+    prefix = re.sub(r"[^A-Za-z]", "", value or "").upper()
+    if prefix != "GHA" or len(digits) != 10:
+        raise ValidationError("Enter the Ghana Card number as GHA-123456789-0.")
+    return f"GHA-{digits[:9]}-{digits[9]}"
+
+
+class RiderPassPlan(TimeStampedModel):
+    """
+    A paid pass a rider buys to go online (instead of a per-trip commission). Plans and prices are
+    set by ops in admin; the first price is meant to be tested with riders and changed.
+    Enforced only when settings.RIDER_PASS_REQUIRED is on.
+    """
+
+    name = models.CharField(max_length=60)
+    duration_days = models.PositiveSmallIntegerField()
+    price = models.DecimalField(max_digits=8, decimal_places=2)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["duration_days", "price"]
+
+    def clean(self):
+        if self.duration_days == 0:
+            raise ValidationError("A pass lasts at least 1 day.")
+        if self.price is not None and self.price <= 0:
+            raise ValidationError("Price must be above zero.")
+
+    def __str__(self):
+        return f"{self.name} ({self.duration_days}d, GH₵{self.price})"
+
+
+class RiderPass(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING_PAYMENT = "pending_payment", "Awaiting payment"
+        ACTIVE = "active", "Active"  # paid; may be queued to start after the current pass
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class Source(models.TextChoices):
+        TRIAL = "trial", "Free trial"
+        MOMO = "momo", "Mobile Money"
+        CASH = "cash", "Paid to ops (cash)"
+        GRANT = "grant", "Granted by ops"
+
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name="passes")
+    plan = models.ForeignKey(RiderPassPlan, on_delete=models.PROTECT, null=True, blank=True, related_name="sales")
+    source = models.CharField(max_length=10, choices=Source.choices)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_PAYMENT)
+    # Snapshotted so a later plan edit never changes what a rider already bought.
+    duration_days = models.PositiveSmallIntegerField()
+    price_paid = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    starts_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    payment_reference = models.CharField(max_length=100, blank=True)
+    payer_phone = models.CharField(max_length=20, blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="+", help_text="Admin who recorded a cash payment or grant")
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["driver", "status", "expires_at"])]
+
+    def __str__(self):
+        return f"RiderPass<{self.source} {self.status}> {self.driver_id}"

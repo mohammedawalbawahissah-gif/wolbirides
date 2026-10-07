@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-nati
 import { api, type ServiceZone } from "../api/client";
 import { useDispatchState } from "../components/DispatchLayer";
 import { useDriverContext } from "../components/DriverGate";
+import RiderPassCard from "../components/RiderPassCard";
 import { Card, EmptyState, ErrorBanner } from "../components/ui";
 import { colors, spacing, typography } from "../theme";
 import type { MainTabScreenProps } from "../navigation/types";
@@ -12,6 +13,7 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
   const [zone, setZone] = useState<ServiceZone | null>(null);
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passKey, setPassKey] = useState(0);
 
   useEffect(() => {
     api.get<ServiceZone[]>("/zones").then(({ data }) => {
@@ -55,6 +57,7 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
       setError(err?.response?.data?.detail || "Couldn't update your status.");
     } finally {
       setToggling(false);
+      setPassKey((k) => k + 1); // going online may have just started the free trial
     }
   }
 
@@ -104,6 +107,8 @@ export default function HomeScreen({ navigation }: MainTabScreenProps<"Drive">) 
 
       {locationError && <ErrorBanner message={locationError} />}
       {error && <ErrorBanner message={error} />}
+
+      <RiderPassCard refreshKey={passKey} />
 
       {!driver.is_online && (
         <Card>

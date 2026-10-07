@@ -7,7 +7,10 @@ import { useToast } from "../components/Toast";
 import "../components/authForm.css";
 import "./Apply.css";
 
-const STEPS = ["Licence", "Vehicle", "Payout", "Review"];
+const STEPS = ["Licence", "ID & union", "Vehicle", "Payout", "Review"];
+
+// Ghana Card PIN: GHA-123456789-0 (spaces/dashes optional; the server normalizes it).
+const GHANA_CARD = /^GHA[\s-]?\d{9}[\s-]?\d$/i;
 
 export default function Apply({ onApplied }: { onApplied: () => void }) {
   const toast = useToast();
@@ -17,7 +20,16 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
   const [licenceExpiry, setLicenceExpiry] = useState("");
   const [licenceDocument, setLicenceDocument] = useState<string | null>(null);
 
+  // Ghana Card is required; union membership and the roadworthy certificate are optional.
+  const [ghanaCard, setGhanaCard] = useState("");
+  const [ghanaCardDocument, setGhanaCardDocument] = useState<string | null>(null);
+  const [transportUnion, setTransportUnion] = useState("");
+  const [unionNumber, setUnionNumber] = useState("");
+  const [unionCardDocument, setUnionCardDocument] = useState<string | null>(null);
+
   const [plateNumber, setPlateNumber] = useState("");
+  const [roadworthyExpiry, setRoadworthyExpiry] = useState("");
+  const [roadworthyCertificate, setRoadworthyCertificate] = useState<string | null>(null);
   const [vehiclePhoto, setVehiclePhoto] = useState<string | null>(null);
   const [vehicleRegDocument, setVehicleRegDocument] = useState<string | null>(null);
 
@@ -29,6 +41,7 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const step1Valid = licenceNumber.trim().length > 0;
+  const idValid = GHANA_CARD.test(ghanaCard.trim());
   const step2Valid = plateNumber.trim().length > 0;
 
   function next(e: FormEvent) {
@@ -49,7 +62,14 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
         licence_number: licenceNumber,
         licence_expiry: licenceExpiry || undefined,
         licence_document: licenceDocument || undefined,
+        ghana_card_number: ghanaCard.trim(),
+        ghana_card_document: ghanaCardDocument || undefined,
+        transport_union: transportUnion.trim() || undefined,
+        union_membership_number: unionNumber.trim() || undefined,
+        union_card_document: unionCardDocument || undefined,
         plate_number: plateNumber,
+        roadworthy_expiry: roadworthyExpiry || undefined,
+        roadworthy_certificate: roadworthyCertificate || undefined,
         vehicle_photo: vehiclePhoto || undefined,
         vehicle_registration_document: vehicleRegDocument || undefined,
         emergency_contact_name: emergencyName,
@@ -59,8 +79,10 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
       });
       toast.show("Application submitted — ops will review your documents.", "success");
       onApplied();
-    } catch {
-      setError("Couldn't submit your application. Check the details and try again.");
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const first = data && typeof data === "object" ? Object.values(data).flat()[0] : null;
+      setError(typeof first === "string" ? first : "Couldn't submit your application. Check the details and try again.");
     } finally {
       setBusy(false);
     }
@@ -110,6 +132,61 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
 
         {step === 1 && (
           <form onSubmit={next}>
+            <label className="field-label" htmlFor="ghana-card">Ghana Card number</label>
+            <input
+              id="ghana-card"
+              className="field-input"
+              value={ghanaCard}
+              onChange={(e) => setGhanaCard(e.target.value)}
+              placeholder="GHA-123456789-0"
+              autoComplete="off"
+              required
+            />
+            {ghanaCard.trim() && !GHANA_CARD.test(ghanaCard.trim()) && (
+              <p className="opt-note">Enter it as on the card: GHA, 9 digits, then 1 digit.</p>
+            )}
+
+            <FileDrop
+              kind="ghana_card_document"
+              label="Photo of your Ghana Card"
+              value={ghanaCardDocument}
+              onChange={setGhanaCardDocument}
+            />
+
+            <label className="field-label" htmlFor="union">Transport union (optional)</label>
+            <input
+              id="union"
+              className="field-input"
+              value={transportUnion}
+              onChange={(e) => setTransportUnion(e.target.value)}
+              placeholder="e.g. NUTO, Tamale branch"
+            />
+
+            <label className="field-label" htmlFor="union-number">Union membership number (optional)</label>
+            <input
+              id="union-number"
+              className="field-input"
+              value={unionNumber}
+              onChange={(e) => setUnionNumber(e.target.value)}
+            />
+
+            <FileDrop
+              kind="union_card_document"
+              label="Photo of your union card (optional)"
+              value={unionCardDocument}
+              onChange={setUnionCardDocument}
+            />
+            <p className="opt-note">Your Ghana Card is required. Add union details if you're a member.</p>
+
+            <div className="apply-step-actions">
+              <button type="button" className="btn btn-ghost" onClick={back}>Back</button>
+              <button className="btn btn-gold" type="submit" disabled={!idValid}>Continue</button>
+            </div>
+          </form>
+        )}
+
+        {step === 2 && (
+          <form onSubmit={next}>
             <label className="field-label" htmlFor="plate">Vehicle plate number</label>
             <input
               id="plate"
@@ -134,6 +211,22 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
               onChange={setVehicleRegDocument}
             />
 
+            <label className="field-label" htmlFor="roadworthy-expiry">Roadworthy certificate expiry (optional)</label>
+            <input
+              id="roadworthy-expiry"
+              type="date"
+              className="field-input"
+              value={roadworthyExpiry}
+              onChange={(e) => setRoadworthyExpiry(e.target.value)}
+            />
+
+            <FileDrop
+              kind="roadworthy_certificate"
+              label="Roadworthy certificate (optional)"
+              value={roadworthyCertificate}
+              onChange={setRoadworthyCertificate}
+            />
+
             <div className="apply-step-actions">
               <button type="button" className="btn btn-ghost" onClick={back}>Back</button>
               <button className="btn btn-gold" type="submit" disabled={!step2Valid}>Continue</button>
@@ -141,7 +234,7 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
           </form>
         )}
 
-        {step === 2 && (
+        {step === 3 && (
           <form onSubmit={next}>
             <label className="field-label" htmlFor="payout-provider">Get paid by</label>
             <select id="payout-provider" className="field-input" value={payoutProvider}
@@ -161,7 +254,7 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
           </form>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <form onSubmit={handleSubmit}>
             <label className="field-label" htmlFor="ename">Emergency contact name</label>
             <input
@@ -181,11 +274,14 @@ export default function Apply({ onApplied }: { onApplied: () => void }) {
 
             <div className="apply-review">
               <div className="apply-review-row"><span>Licence</span><strong>{licenceNumber}</strong></div>
+              <div className="apply-review-row"><span>Ghana Card</span><strong>{ghanaCard.trim()}</strong></div>
+              <div className="apply-review-row"><span>Union</span><strong>{[transportUnion.trim(), unionNumber.trim()].filter(Boolean).join(" · ") || "Not given"}</strong></div>
               <div className="apply-review-row"><span>Plate</span><strong>{plateNumber}</strong></div>
               <div className="apply-review-row">
                 <span>Documents</span>
                 <strong>
-                  {[licenceDocument, vehiclePhoto, vehicleRegDocument].filter(Boolean).length} of 3 uploaded
+                  {[licenceDocument, ghanaCardDocument, unionCardDocument, vehiclePhoto, vehicleRegDocument,
+                    roadworthyCertificate].filter(Boolean).length} of 6 uploaded
                 </strong>
               </div>
               <div className="apply-review-row">

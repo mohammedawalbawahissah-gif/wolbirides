@@ -3,6 +3,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from accounts.views import (
     AdminLoginView,
+    DriverLoginView,
     EmailOTPRequestView,
     LoginView,
     MeView,
@@ -24,6 +25,7 @@ urlpatterns = [
     path("auth/password/reset/request", PasswordResetRequestView.as_view(), name="password-reset-request"),
     path("auth/password/reset/confirm", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
     path("admin/auth/login", AdminLoginView.as_view(), name="admin-login"),
+    path("drivers/auth/login", DriverLoginView.as_view(), name="driver-login"),
     path("passengers/me", MeView.as_view(), name="me"),
     path("passengers/me/addresses", SavedAddressListView.as_view(), name="saved-addresses"),
     path("passengers/me/addresses/<uuid:address_id>", SavedAddressDeleteView.as_view(), name="saved-address-delete"),

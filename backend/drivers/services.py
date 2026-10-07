@@ -30,6 +30,11 @@ def submit_driver_application(user, data):
             "licence_number": data["licence_number"],
             "licence_expiry": data.get("licence_expiry"),
             "licence_document": data.get("licence_document", ""),
+            "ghana_card_number": data["ghana_card_number"],
+            "ghana_card_document": data.get("ghana_card_document", ""),
+            "transport_union": data.get("transport_union", ""),
+            "union_membership_number": data.get("union_membership_number", ""),
+            "union_card_document": data.get("union_card_document", ""),
             "emergency_contact_name": data.get("emergency_contact_name", ""),
             "emergency_contact_phone": data.get("emergency_contact_phone", ""),
             "payout_phone": _normalize(data["payout_phone"]) if data.get("payout_phone") else "",
@@ -43,6 +48,8 @@ def submit_driver_application(user, data):
         defaults={
             "photo": data.get("vehicle_photo", ""),
             "registration_document": data.get("vehicle_registration_document", ""),
+            "roadworthy_certificate": data.get("roadworthy_certificate", ""),
+            "roadworthy_expiry": data.get("roadworthy_expiry"),
         },
     )
     return driver
@@ -52,6 +59,11 @@ def set_driver_online(driver, is_online, zone=None):
     """Enforces the WR-07.2 verification gate before a driver can receive requests."""
     if is_online and driver.verification_status != Driver.VerificationStatus.VERIFIED:
         raise PermissionError("Rider is not verified and cannot go online")
+    if is_online:
+        from drivers.passes import ensure_pass_for_online
+
+        if not ensure_pass_for_online(driver):
+            raise PermissionError("You need an active pass to go online. Buy one in your profile.")
     driver.is_online = is_online
     if zone is not None:
         driver.current_zone = zone

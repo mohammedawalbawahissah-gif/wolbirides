@@ -163,6 +163,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'safety.tasks.run_safety_checks',
         'schedule': 60.0,
     },
+    # Rider passes: expire ended passes; take riders without one offline when passes are required.
+    'enforce-rider-passes': {
+        'task': 'drivers.tasks.enforce_rider_passes',
+        'schedule': 60.0,
+    },
     'send-recurring-ride-reminders': {
         'task': 'accounts.tasks.send_recurring_ride_reminders',
         'schedule': 300.0,
@@ -225,15 +230,13 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# Dev fallback: with no real SMTP configured, emails print to the runserver
-# console (same "log instead of send" pattern as AFRICASTALKING_USERNAME
-# below for SMS) so signup works end-to-end without a mail provider.
-EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True') == 'True'
+# Email goes out through Resend (core/email_backend.py). Dev fallback: with no RESEND_API_KEY, emails
+# print to the runserver console (same "log instead of send" pattern as AFRICASTALKING_USERNAME below
+# for SMS) so signup works end-to-end without a mail provider. DEFAULT_FROM_EMAIL must be on a domain
+# verified in Resend, e.g. "WolbiRides <no-reply@yourdomain.com>".
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+# Decided by the key alone, so a leftover EMAIL_BACKEND line in an old .env can't quietly keep mail on SMTP/console.
+EMAIL_BACKEND = 'core.email_backend.ResendEmailBackend' if RESEND_API_KEY else 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@wolbirides.local')
 
 # AI Assistant (WR UX overhaul, item 3) — server-side call to the Anthropic
@@ -293,14 +296,19 @@ HUBTEL_DEV_AUTO_APPROVE = os.environ.get('HUBTEL_DEV_AUTO_APPROVE', 'True').lowe
 # the rest of the platform's pricing logic already follows.
 DEFAULT_DRIVER_COMMISSION_RATE = float(os.environ.get('DEFAULT_DRIVER_COMMISSION_RATE', '0.0'))
 
-CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL', '')
-if CLOUDINARY_URL:
-    # The cloudinary SDK can auto-parse CLOUDINARY_URL from the process
-    # environment on its own, but configuring it explicitly here means it
-    # works the same way regardless of import order or whether something
-    # else already imported cloudinary before Django settings ran.
-    import cloudinary as _cloudinary
-    _cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
+# Rider passes (drivers/passes.py): riders pay a daily/weekly pass to go online instead of a
+# per-trip commission. Off by default so recruiting and the soft launch run free; switch on
+# when charging starts. Every newly verified rider gets RIDER_PASS_TRIAL_DAYS free (0 = none).
+RIDER_PASS_REQUIRED = os.environ.get('RIDER_PASS_REQUIRED', 'False').lower() in ('1', 'true', 'yes')
+RIDER_PASS_TRIAL_DAYS = int(os.environ.get('RIDER_PASS_TRIAL_DAYS', '14'))
+
+# File uploads (driver documents, vehicle/profile photos) are stored in Cloudflare R2 — see core/storage.py.
+# R2_PUBLIC_BASE_URL is where the bucket is served from (a custom domain on the bucket, or its r2.dev address).
+R2_ACCOUNT_ID = os.environ.get('R2_ACCOUNT_ID', '')
+R2_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID', '')
+R2_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY', '')
+R2_BUCKET = os.environ.get('R2_BUCKET', '')
+R2_PUBLIC_BASE_URL = os.environ.get('R2_PUBLIC_BASE_URL', '')
 
 
 # Database

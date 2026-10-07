@@ -100,3 +100,71 @@ class ListShapeTests(TestCase):
         self.assertIsInstance(addresses, list)
         self.assertEqual(len(addresses), 25)
         self.assertIsInstance(c.get("/api/passengers/me/recurring-rides").data, list)
+
+
+class PortalLoginGatingTests(TestCase):
+    """
+    SECURITY: /api/auth/login (passenger apps) and /api/drivers/auth/login (rider apps) must
+    each refuse an account of the wrong role, the same way /api/admin/auth/login already refused
+    anyone but admin/support. Before this, both passenger and rider apps shared one ungated
+    endpoint, so either account type could sign in to either portal.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()  # login throttling is keyed by email; start from a clean slate
+        self.passenger = User.objects.create_user_with_email(
+            email="ama@uds.edu.gh", password="Tamale-Rides-2026", name="Ama", role="passenger")
+        self.driver = User.objects.create_user_with_email(
+            email="kofi@uds.edu.gh", password="Tamale-Rides-2026", name="Kofi", role="driver")
+        self.admin = User.objects.create_user_with_email(
+            email="ops@wolbirides.com", password="Tamale-Rides-2026", name="Ops", role="admin")
+        self.c = APIClient()
+
+    def test_a_passenger_account_can_sign_in_to_the_passenger_app(self):
+        r = self.c.post("/api/auth/login", {"email": "ama@uds.edu.gh", "password": "Tamale-Rides-2026"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("access", r.data)
+
+    def test_a_driver_account_is_turned_away_from_the_passenger_app(self):
+        r = self.c.post("/api/auth/login", {"email": "kofi@uds.edu.gh", "password": "Tamale-Rides-2026"}, format="json")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.data["detail"], "This account is not authorized for the passenger app")
+        self.assertNotIn("access", r.data)
+
+    def test_an_admin_account_is_turned_away_from_the_passenger_app(self):
+        r = self.c.post("/api/auth/login", {"email": "ops@wolbirides.com", "password": "Tamale-Rides-2026"}, format="json")
+        self.assertEqual(r.status_code, 403)
+
+    def test_a_driver_account_can_sign_in_to_the_rider_app(self):
+        r = self.c.post("/api/drivers/auth/login", {"email": "kofi@uds.edu.gh", "password": "Tamale-Rides-2026"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("access", r.data)
+
+    def test_a_passenger_account_is_turned_away_from_the_rider_app(self):
+        r = self.c.post("/api/drivers/auth/login", {"email": "ama@uds.edu.gh", "password": "Tamale-Rides-2026"}, format="json")
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.data["detail"], "This account is not authorized for the rider app")
+        self.assertNotIn("access", r.data)
+
+    def test_an_admin_account_is_turned_away_from_the_rider_app(self):
+        r = self.c.post("/api/drivers/auth/login", {"email": "ops@wolbirides.com", "password": "Tamale-Rides-2026"}, format="json")
+        self.assertEqual(r.status_code, 403)
+
+    def test_a_passenger_and_driver_are_both_still_turned_away_from_the_admin_dashboard(self):
+        for email in ("ama@uds.edu.gh", "kofi@uds.edu.gh"):
+            r = self.c.post("/api/admin/auth/login", {"email": email, "password": "Tamale-Rides-2026"}, format="json")
+            self.assertEqual(r.status_code, 403)
+
+    def test_a_wrong_password_never_reveals_the_accounts_role_on_either_portal(self):
+        """A bad password must look identical whether the account exists, and whichever role it
+        is — the generic message, never the role-specific one, and never a 403."""
+        for url, email in (
+            ("/api/auth/login", "kofi@uds.edu.gh"),       # driver, wrong portal AND wrong password
+            ("/api/drivers/auth/login", "ama@uds.edu.gh"),  # passenger, wrong portal AND wrong password
+            ("/api/auth/login", "ama@uds.edu.gh"),          # passenger, right portal, wrong password
+        ):
+            r = self.c.post(url, {"email": email, "password": "not-the-password"}, format="json")
+            self.assertEqual(r.status_code, 400, (url, email))
+            self.assertEqual(r.data["detail"], "Incorrect email or password")

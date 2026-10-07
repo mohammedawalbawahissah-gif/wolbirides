@@ -185,6 +185,12 @@ def _handle_provider_callback(reference_id: str = "", external_id: str = ""):
     if kind == "bundle":
         bundle = PassengerBundle.objects.filter(id=obj_id).first()
         return refresh_bundle_payment(bundle) if bundle else None
+    if kind == "riderpass":
+        from drivers.models import RiderPass
+        from drivers.passes import refresh_purchase
+
+        rider_pass = RiderPass.objects.filter(id=obj_id).first()
+        return refresh_purchase(rider_pass) if rider_pass else None
     if kind == "payout":
         payout = Payout.objects.filter(id=obj_id).first()
         return check_payout_status(payout) if payout else None

@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function login(email: string, password: string) {
-    const { data } = await api.post("/auth/login", { email, password });
+    const { data } = await api.post("/drivers/auth/login", { email, password }); // role-gated: see DriverLoginView
     storeSession(data);
     setUser(data.user);
   }

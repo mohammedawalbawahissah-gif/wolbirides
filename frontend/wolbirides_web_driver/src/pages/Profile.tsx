@@ -52,6 +52,7 @@ export default function Profile() {
         </div>
       </div>
 
+      <CommercialDetailsCard />
       <PayoutCard />
       <CapabilitiesCard />
       <HowRidesAreShared />
@@ -208,6 +209,89 @@ function HowRidesAreShared() {
         this week, so the work stays reasonably shared. We never send you a ride that's much further away just for
         this.
       </p>
+    </div>
+  );
+}
+
+
+const MISSING_LABELS: Record<string, string> = {
+  licence_number: "licence number",
+  ghana_card_number: "Ghana Card",
+  transport_union: "transport union",
+  union_membership_number: "union membership number",
+  vehicle: "vehicle",
+  roadworthy_expiry: "roadworthy expiry",
+};
+
+/** LI 2519 commercial rider details. Riders who applied before these were required fill them in here. */
+function CommercialDetailsCard() {
+  const { driver, setDriver } = useDriverContext();
+  const toast = useToast();
+  const vehicle = driver.vehicles.find((v) => v.active) || driver.vehicles[0];
+  const [ghanaCard, setGhanaCard] = useState(driver.ghana_card_number || "");
+  const [ghanaCardDoc, setGhanaCardDoc] = useState<string | null>(driver.ghana_card_document || null);
+  const [union, setUnion] = useState(driver.transport_union || "");
+  const [unionNumber, setUnionNumber] = useState(driver.union_membership_number || "");
+  const [unionDoc, setUnionDoc] = useState<string | null>(driver.union_card_document || null);
+  const [rwExpiry, setRwExpiry] = useState(vehicle?.roadworthy_expiry || "");
+  const [rwDoc, setRwDoc] = useState<string | null>(vehicle?.roadworthy_certificate || null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const missing = driver.compliance_missing || [];
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const { data } = await api.patch("/drivers/me", {
+        ...(ghanaCard.trim() ? { ghana_card_number: ghanaCard.trim() } : {}),
+        ghana_card_document: ghanaCardDoc || "",
+        transport_union: union.trim(),
+        union_membership_number: unionNumber.trim(),
+        union_card_document: unionDoc || "",
+        ...(vehicle ? { roadworthy_expiry: rwExpiry || null, roadworthy_certificate: rwDoc || "" } : {}),
+      });
+      setDriver(data);
+      toast.show("Details saved.", "success");
+    } catch (err: any) {
+      const d = err?.response?.data;
+      const first = d && typeof d === "object" ? Object.values(d).flat()[0] : null;
+      setError(typeof first === "string" ? first : "Couldn't save. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ maxWidth: 420, marginTop: 16 }}>
+      <h2 className="side-card-title">Commercial rider details</h2>
+      {missing.length > 0 ? (
+        <p className="opt-note">Still needed: {missing.map((m) => MISSING_LABELS[m] || m).join(", ")}.</p>
+      ) : (
+        <p className="opt-note">All required details are on file.</p>
+      )}
+      <form onSubmit={save}>
+        <label className="field-label" htmlFor="pf-ghana">Ghana Card number</label>
+        <input id="pf-ghana" className="field-input" placeholder="GHA-123456789-0" autoComplete="off"
+          value={ghanaCard} onChange={(e) => setGhanaCard(e.target.value)} />
+        <FileDrop kind="ghana_card_document" label="Photo of your Ghana Card" value={ghanaCardDoc} onChange={setGhanaCardDoc} />
+        <label className="field-label" htmlFor="pf-union">Transport union (optional)</label>
+        <input id="pf-union" className="field-input" placeholder="e.g. NUTO, Tamale branch"
+          value={union} onChange={(e) => setUnion(e.target.value)} />
+        <label className="field-label" htmlFor="pf-union-no">Union membership number (optional)</label>
+        <input id="pf-union-no" className="field-input" value={unionNumber} onChange={(e) => setUnionNumber(e.target.value)} />
+        <FileDrop kind="union_card_document" label="Photo of your union card (optional)" value={unionDoc} onChange={setUnionDoc} />
+        {vehicle && (
+          <>
+            <label className="field-label" htmlFor="pf-rw">Roadworthy certificate expiry (optional)</label>
+            <input id="pf-rw" type="date" className="field-input" value={rwExpiry} onChange={(e) => setRwExpiry(e.target.value)} />
+            <FileDrop kind="roadworthy_certificate" label="Roadworthy certificate (optional)" value={rwDoc} onChange={setRwDoc} />
+          </>
+        )}
+        {error && <div className="auth-error">{error}</div>}
+        <button className="btn btn-gold btn-block" type="submit" disabled={saving}>{saving ? "Saving…" : "Save details"}</button>
+      </form>
     </div>
   );
 }

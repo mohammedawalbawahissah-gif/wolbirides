@@ -130,6 +130,8 @@ export interface Vehicle {
   vehicle_type: string;
   registration_document: string;
   photo: string;
+  roadworthy_certificate?: string;
+  roadworthy_expiry?: string | null;
   active: boolean;
 }
 
@@ -152,6 +154,42 @@ export interface Driver {
   emergency_contact_phone?: string;
   payout_phone?: string;
   payout_provider?: "momo" | "hubtel";
+  // LI 2519 commercial rider details (only ever returned to the rider and admins).
+  ghana_card_number?: string;
+  ghana_card_document?: string;
+  transport_union?: string;
+  union_membership_number?: string;
+  union_card_document?: string;
+  compliance_missing?: string[];
+}
+
+export interface RiderPassPlan {
+  id: string;
+  name: string;
+  duration_days: number;
+  price: string;
+}
+
+export interface RiderPass {
+  id: string;
+  source: "trial" | "momo" | "cash" | "grant";
+  status: "pending_payment" | "active" | "expired" | "cancelled";
+  plan: string | null;
+  duration_days: number;
+  price_paid: string;
+  starts_at: string | null;
+  expires_at: string | null;
+}
+
+export interface RiderPassStatus {
+  required: boolean;
+  can_go_online: boolean;
+  trial_available: boolean;
+  trial_days: number;
+  current: RiderPass | null;
+  paid_until: string | null;
+  plans: RiderPassPlan[];
+  recent: RiderPass[];
 }
 
 export interface FareQuote {

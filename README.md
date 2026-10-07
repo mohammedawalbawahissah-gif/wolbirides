@@ -78,7 +78,7 @@ Required backend settings (see `backend/.env.example`):
 
 - `DJANGO_DEBUG=False`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`
 - `DJANGO_ADMIN_PATH`: a private path for Django admin (the app won't start without it, and refuses `admin`)
-- `DATABASE_URL`, `REDIS_URL`, SMTP settings, `AFRICASTALKING_*`, `CLOUDINARY_URL`,
+- `DATABASE_URL`, `REDIS_URL`, `RESEND_API_KEY`, `AFRICASTALKING_*`, `R2_*` (Cloudflare R2),
   `ANTHROPIC_API_KEY`, and the `MOMO_*` keys for MTN MoMo
 
 With `DJANGO_DEBUG=False` the backend redirects to HTTPS, sends HSTS (30 days to start), and

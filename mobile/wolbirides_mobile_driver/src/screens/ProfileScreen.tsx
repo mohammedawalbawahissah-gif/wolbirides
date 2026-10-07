@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useDriverContext } from "../components/DriverGate";
 import { Badge, Button, Card, ErrorBanner, FieldLabel, TextField } from "../components/ui";
 import { EmergencyContactCard } from "../components/Safety";
+import CommercialDetailsCard from "../components/CommercialDetailsCard";
 import PhotoField from "../components/PhotoField";
 import SupportCard from "../components/SupportCard";
 import { colors, spacing, typography } from "../theme";
@@ -44,6 +45,8 @@ export default function ProfileScreen() {
       </Card>
 
       <View style={styles.spacer} />
+
+      <CommercialDetailsCard />
 
       <Card style={styles.card}>
         <Text style={typography.h2}>What you offer</Text>

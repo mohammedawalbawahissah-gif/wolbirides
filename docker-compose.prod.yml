@@ -1,0 +1,65 @@
+# Production overlay. Use with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file deploy/.env.prod up -d --build
+# Only Caddy is reachable from the internet (ports 80/443). Postgres, Redis, Django and the web
+# containers are on the private Docker network and publish nothing.
+services:
+  db:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+
+  backend:
+    restart: unless-stopped
+    ports: !reset []
+    env_file:
+      - ./backend/.env
+      - ./deploy/.env.prod
+    environment:
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: ${PASSENGER_HOST},${DRIVER_HOST},${ADMIN_HOST},backend
+      CORS_ALLOWED_ORIGINS: https://${PASSENGER_HOST},https://${DRIVER_HOST},https://${ADMIN_HOST}
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://${PASSENGER_HOST},https://${DRIVER_HOST},https://${ADMIN_HOST}
+      PASSENGER_WEB_URL: https://${PASSENGER_HOST}
+      MOMO_DEV_AUTO_APPROVE: "False"
+      HUBTEL_DEV_AUTO_APPROVE: "False"
+  worker:
+    restart: unless-stopped
+    env_file: [./backend/.env, ./deploy/.env.prod]
+    environment:
+      DJANGO_DEBUG: "False"
+      MOMO_DEV_AUTO_APPROVE: "False"
+      HUBTEL_DEV_AUTO_APPROVE: "False"
+  beat:
+    restart: unless-stopped
+    env_file: [./backend/.env, ./deploy/.env.prod]
+    environment:
+      DJANGO_DEBUG: "False"
+
+  passenger-web:
+    restart: unless-stopped
+    ports: !reset []
+  driver-web:
+    restart: unless-stopped
+    ports: !reset []
+  admin-web:
+    restart: unless-stopped
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      PASSENGER_HOST: ${PASSENGER_HOST}
+      DRIVER_HOST: ${DRIVER_HOST}
+      ADMIN_HOST: ${ADMIN_HOST}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [passenger-web, driver-web, admin-web]
+
+volumes:
+  caddy_data:
+  caddy_config:

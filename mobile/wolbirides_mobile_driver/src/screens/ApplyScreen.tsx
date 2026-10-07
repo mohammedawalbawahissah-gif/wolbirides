@@ -6,9 +6,17 @@ import { pickAndUpload, type UploadKind } from "../upload";
 import { Button, Card, ErrorBanner, FieldLabel, TextField } from "../components/ui";
 import { colors, spacing, typography } from "../theme";
 
+// Ghana Card PIN: GHA-123456789-0 (spaces/dashes optional; the server normalizes it).
+const GHANA_CARD = /^GHA[\s-]?\d{9}[\s-]?\d$/i;
+
 export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
   const [licenceNumber, setLicenceNumber] = useState("");
   const [plateNumber, setPlateNumber] = useState("");
+  // Ghana Card is required; union membership and the roadworthy certificate are optional.
+  const [ghanaCard, setGhanaCard] = useState("");
+  const [transportUnion, setTransportUnion] = useState("");
+  const [unionNumber, setUnionNumber] = useState("");
+  const [roadworthyExpiry, setRoadworthyExpiry] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [payoutProvider, setPayoutProvider] = useState<"momo" | "hubtel">("momo");
@@ -33,6 +41,8 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
   }
 
   const expiryValid = !licenceExpiry || /^\d{4}-\d{2}-\d{2}$/.test(licenceExpiry);
+  const rwValid = !roadworthyExpiry || /^\d{4}-\d{2}-\d{2}$/.test(roadworthyExpiry);
+  const idValid = GHANA_CARD.test(ghanaCard.trim());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +54,14 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
         licence_number: licenceNumber,
         licence_expiry: licenceExpiry || undefined,
         licence_document: docs.licence_document,
+        ghana_card_number: ghanaCard.trim(),
+        ghana_card_document: docs.ghana_card_document,
+        transport_union: transportUnion.trim() || undefined,
+        union_membership_number: unionNumber.trim() || undefined,
+        union_card_document: docs.union_card_document,
         plate_number: plateNumber,
+        roadworthy_expiry: roadworthyExpiry || undefined,
+        roadworthy_certificate: docs.roadworthy_certificate,
         vehicle_photo: docs.vehicle_photo,
         vehicle_registration_document: docs.vehicle_registration_document,
         emergency_contact_name: emergencyName,
@@ -53,8 +70,10 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
         payout_phone: payoutPhone.trim() || undefined,
       });
       onApplied();
-    } catch {
-      setError("Couldn't submit your application. Check the details and try again.");
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const first = data && typeof data === "object" ? Object.values(data).flat()[0] : null;
+      setError(typeof first === "string" ? first : "Couldn't submit your application. Check the details and try again.");
     } finally {
       setBusy(false);
     }
@@ -74,12 +93,31 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
           <DocumentRow label="Photo of your licence" url={docs.licence_document} busy={uploading === "licence_document"}
             onPick={(src) => upload("licence_document", src)} allowPdf />
 
+          <FieldLabel>Ghana Card number</FieldLabel>
+          <TextField value={ghanaCard} onChangeText={setGhanaCard} placeholder="GHA-123456789-0" autoCapitalize="characters" autoCorrect={false} />
+          {!!ghanaCard.trim() && !GHANA_CARD.test(ghanaCard.trim()) && (
+            <Text style={[typography.muted, { marginTop: -4, marginBottom: spacing.sm }]}>Enter it as on the card: GHA, 9 digits, then 1 digit.</Text>
+          )}
+          <DocumentRow label="Photo of your Ghana Card" url={docs.ghana_card_document} busy={uploading === "ghana_card_document"}
+            onPick={(src) => upload("ghana_card_document", src)} allowPdf />
+
+          <FieldLabel>Transport union (optional)</FieldLabel>
+          <TextField value={transportUnion} onChangeText={setTransportUnion} placeholder="e.g. NUTO, Tamale branch" />
+          <FieldLabel>Union membership number (optional)</FieldLabel>
+          <TextField value={unionNumber} onChangeText={setUnionNumber} autoCapitalize="characters" />
+          <DocumentRow label="Photo of your union card (optional)" url={docs.union_card_document} busy={uploading === "union_card_document"}
+            onPick={(src) => upload("union_card_document", src)} allowPdf />
+
           <FieldLabel>Vehicle plate number</FieldLabel>
           <TextField value={plateNumber} onChangeText={setPlateNumber} placeholder="GT-1234-24" autoCapitalize="characters" />
           <DocumentRow label="Photo of your yellow-yellow" url={docs.vehicle_photo} busy={uploading === "vehicle_photo"}
             onPick={(src) => upload("vehicle_photo", src)} />
           <DocumentRow label="Vehicle registration document" url={docs.vehicle_registration_document}
             busy={uploading === "vehicle_registration_document"} onPick={(src) => upload("vehicle_registration_document", src)} allowPdf />
+          <FieldLabel>Roadworthy certificate expiry, YYYY-MM-DD (optional)</FieldLabel>
+          <TextField value={roadworthyExpiry} onChangeText={setRoadworthyExpiry} placeholder="2027-03-31" keyboardType="numbers-and-punctuation" />
+          <DocumentRow label="Roadworthy certificate (optional)" url={docs.roadworthy_certificate} busy={uploading === "roadworthy_certificate"}
+            onPick={(src) => upload("roadworthy_certificate", src)} allowPdf />
 
           <FieldLabel>Get paid by</FieldLabel>
           <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm }}>
@@ -105,11 +143,12 @@ export default function ApplyScreen({ onApplied }: { onApplied: () => void }) {
           {error && <ErrorBanner message={error} />}
 
           <Button title={busy ? "Submitting…" : "Submit application"} onPress={handleSubmit} variant="gold" loading={busy}
-            disabled={!!uploading || !licenceNumber.trim() || !plateNumber.trim() || !expiryValid} />
+            disabled={!!uploading || !licenceNumber.trim() || !plateNumber.trim() || !expiryValid || !rwValid || !idValid} />
         </Card>
 
         <Text style={styles.footnote}>
-          Documents go straight to WolbiRides ops for verification and aren't shown to passengers.
+          Your Ghana Card is required; union details and the roadworthy certificate are optional. Documents go straight
+          to WolbiRides ops for verification and aren't shown to passengers.
         </Text>
       </ScrollView>
     </SafeAreaView>

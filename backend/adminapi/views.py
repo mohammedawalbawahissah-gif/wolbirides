@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from core.permissions import IsAdminRole, IsStaffRole
 from drivers.models import Driver
-from drivers.serializers import DriverSerializer
+from drivers.serializers import DriverPrivateSerializer as DriverSerializer  # admins see compliance fields
 from incidents.models import Incident
 from incidents.serializers import IncidentSerializer
 from support.models import SupportTicket
@@ -91,6 +91,8 @@ class AdminDriverListView(APIView):
                 Q(user__name__icontains=search)
                 | Q(user__phone__icontains=search)
                 | Q(licence_number__icontains=search)
+                | Q(ghana_card_number__icontains=search)
+                | Q(union_membership_number__icontains=search)
             )
         return Response(DriverSerializer(drivers[:200], many=True).data)
 
@@ -113,6 +115,14 @@ class AdminDriverVerifyView(APIView):
         }
         if action not in mapping:
             return Response({"detail": "action must be one of verify/reject/suspend"}, status=400)
+        missing = []
+        if action == "verify":
+            # LI 2519: Ghana Card, union membership, licence and a roadworthy vehicle on file
+            # before a rider can carry passengers. `override: true` is for ops who have checked
+            # the papers in person and will enter them later; it's recorded in the audit log.
+            missing = driver.compliance_missing()
+            if missing and not request.data.get("override"):
+                return Response({"detail": "Rider is missing required documents.", "missing": missing}, status=400)
         driver.verification_status = mapping[action]
         if action != "verify":
             driver.is_online = False
@@ -125,8 +135,10 @@ class AdminDriverVerifyView(APIView):
         from core.models import AuditLog, notify
 
         AuditLog.objects.create(
-            actor=request.user, action=f"driver.{action}", target_model="Driver", target_id=str(driver.id)
+            actor=request.user, action=f"driver.{action}", target_model="Driver", target_id=str(driver.id),
+            metadata={"override_missing": missing} if missing else {},
         )
+
 
         notify_copy = {
             "verify": ("You're verified!", "Ops approved your documents — you can go online now."),
@@ -295,3 +307,116 @@ class AdminDashboardSummaryView(APIView):
             ),
             "open_support_tickets": SupportTicket.objects.exclude(status=SupportTicket.Status.RESOLVED).count(),
         })
+
+
+# --- Rider passes (drivers/passes.py) -----------------------------------------
+
+class AdminRiderPassPlanListView(APIView):
+    """GET/POST /api/admin/rider-passes/plans — plans riders can buy. Body: name, duration_days, price."""
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        from drivers.models import RiderPassPlan
+
+        return Response([_plan_json(p) for p in RiderPassPlan.objects.all()])
+
+    def post(self, request):
+        from drivers.models import RiderPassPlan
+
+        plan, error = _plan_from(RiderPassPlan(), request.data, partial=False)
+        if error:
+            return Response({"detail": error}, status=400)
+        plan.save()
+        return Response(_plan_json(plan), status=201)
+
+
+class AdminRiderPassPlanDetailView(APIView):
+    """PATCH /api/admin/rider-passes/plans/<id> — change price/length, or set active false to stop
+    selling it. Plans are never deleted: sold passes point at them."""
+
+    permission_classes = [IsAdminRole]
+
+    def patch(self, request, plan_id):
+        from drivers.models import RiderPassPlan
+
+        plan = get_object_or_404(RiderPassPlan, id=plan_id)
+        plan, error = _plan_from(plan, request.data, partial=True)
+        if error:
+            return Response({"detail": error}, status=400)
+        plan.save()
+        return Response(_plan_json(plan))
+
+
+class AdminDriverPassesView(APIView):
+    """GET /api/admin/drivers/<id>/passes — a rider's pass history and status.
+    POST {source: "cash", plan_id} records a pass paid in cash to ops;
+    POST {source: "grant", days, plan_id?} gives free days."""
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request, driver_id):
+        from drivers.passes import pass_status
+
+        driver = get_object_or_404(Driver, id=driver_id)
+        return Response(pass_status(driver))
+
+    def post(self, request, driver_id):
+        from core.models import AuditLog
+        from drivers.models import RiderPassPlan
+        from drivers.passes import PassError, record_offline_pass, serialize_pass
+
+        driver = get_object_or_404(Driver, id=driver_id)
+        plan = None
+        if request.data.get("plan_id"):
+            plan = RiderPassPlan.objects.filter(id=request.data["plan_id"]).first()
+            if plan is None:
+                return Response({"detail": "Unknown plan."}, status=400)
+        try:
+            days = int(request.data["days"]) if request.data.get("days") not in (None, "") else None
+        except (TypeError, ValueError):
+            return Response({"detail": "days must be a whole number."}, status=400)
+        if days is not None and not 1 <= days <= 90:
+            return Response({"detail": "days must be between 1 and 90."}, status=400)
+        try:
+            rider_pass = record_offline_pass(driver, plan, admin=request.user,
+                                             source=request.data.get("source", "cash"), days=days)
+        except PassError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        AuditLog.objects.create(actor=request.user, action=f"riderpass.{rider_pass.source}",
+                                target_model="Driver", target_id=str(driver.id),
+                                metadata={"pass_id": str(rider_pass.id), "days": rider_pass.duration_days,
+                                         "amount": str(rider_pass.price_paid)})
+        return Response(serialize_pass(rider_pass), status=201)
+
+
+def _plan_json(p):
+    return {"id": str(p.id), "name": p.name, "duration_days": p.duration_days, "price": str(p.price),
+            "active": p.active, "sold": p.sales.filter(status__in=["active", "expired"]).count()}
+
+
+def _plan_from(plan, data, partial):
+    from decimal import Decimal, InvalidOperation
+
+    if "name" in data or not partial:
+        name = (data.get("name") or "").strip()
+        if not name or len(name) > 60:
+            return plan, "name is required (up to 60 characters)."
+        plan.name = name
+    if "duration_days" in data or not partial:
+        try:
+            plan.duration_days = int(data.get("duration_days"))
+        except (TypeError, ValueError):
+            return plan, "duration_days must be a whole number."
+        if not 1 <= plan.duration_days <= 90:
+            return plan, "duration_days must be between 1 and 90."
+    if "price" in data or not partial:
+        try:
+            plan.price = Decimal(str(data.get("price"))).quantize(Decimal("0.01"))
+        except (InvalidOperation, TypeError, ValueError):
+            return plan, "price must be a number."
+        if plan.price <= 0:
+            return plan, "price must be above zero."
+    if "active" in data:
+        plan.active = bool(data["active"])
+    return plan, None

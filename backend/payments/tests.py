@@ -279,6 +279,10 @@ class HubtelDevModeTests(_CompletedTripBase):
             record_cash_payment(self.trip)
 
 
+# Commercial rider details LI 2519 requires on every application.
+LI2519 = {"ghana_card_number": "GHA-123456789-0", "transport_union": "NUTO Tamale", "union_membership_number": "T-001"}
+
+
 @override_settings(**LIVE)
 class PayoutDestinationTests(_CompletedTripBase):
     """A rider's own payout_phone/payout_provider decide where their money goes, not their
@@ -337,6 +341,7 @@ class PayoutDestinationTests(_CompletedTripBase):
     def test_setting_a_payout_method_at_application_is_optional_and_used_when_given(self):
         c = APIClient(); c.force_authenticate(self.driver_a.user)
         r = c.post("/api/drivers/apply", {
+            **LI2519,
             "licence_number": "L-1", "plate_number": "GT-9999-24",
             "payout_phone": "0209998888", "payout_provider": "hubtel",
         }, format="json")
@@ -346,7 +351,7 @@ class PayoutDestinationTests(_CompletedTripBase):
 
     def test_leaving_it_blank_at_application_keeps_the_account_phone_fallback(self):
         c = APIClient(); c.force_authenticate(self.driver_a.user)
-        r = c.post("/api/drivers/apply", {"licence_number": "L-1", "plate_number": "GT-9999-24"}, format="json")
+        r = c.post("/api/drivers/apply", {"licence_number": "L-1", "plate_number": "GT-9999-24", **LI2519}, format="json")
         self.assertEqual(r.status_code, 201, r.data)
         self.driver_a.refresh_from_db()
         self.assertEqual((self.driver_a.payout_phone, self.driver_a.payout_provider), ("", "momo"))
